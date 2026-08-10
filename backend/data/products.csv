@@ -1,0 +1,6 @@
+﻿supplier_id,supplier_name,location,rating,lead_time_days,contact_number,product_id,branch_id,supplier_stock,reorder_level,stock_status,stock_utilization_rate,supply_risk_score
+supplier_1,supplier_001,Bangalore,4.5,3,1234567890,item_1, store_1,4714,188,OK,49,3
+supplier_2,supplier_002,Chennai,4.2,5,1234567890,item_2, store_2,1417,170,OK,62,2
+supplier_3,supplier_003,Mumbai,3.8,7,1234567890,item_3, store_3,2366,158,OK,49,2
+supplier_4,supplier_004,Hyderabad,4.7,4,1234567890,item_4, store_4,1470,102,OK,40,1
+supplier_5,supplier_005,Delhi,4,6,1234567890,item_5, store_5,1254,200,OK,56,3
