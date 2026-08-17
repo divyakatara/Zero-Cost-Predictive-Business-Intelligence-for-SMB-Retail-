@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+backend/.env
+
 *.egg-info/
 dist/
 build/

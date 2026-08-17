@@ -5,7 +5,7 @@ from sqlalchemy import text
 from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
-from routes import auth, business_pages, dashboard, data, inventory, sales, supplier
+from routes import auth, business_pages, chat, dashboard, data, inventory, sales, supplier
 
 # Create database tables when the app starts.
 models.Base.metadata.create_all(bind=engine)
@@ -152,6 +152,7 @@ app.include_router(sales.router)
 app.include_router(inventory.router)
 app.include_router(supplier.router)
 app.include_router(data.router)
+app.include_router(chat.router)
 
 
 @app.on_event("startup")
