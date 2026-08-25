@@ -1,5 +1,8 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import LoginPage from "./LoginPage";
+import BRegisterBusinessPage from "./BRegisterBusinessPage";
+import BusinessStatusPage from "./BusinessStatusPage";
+import AdminApprovalPage from "./AdminApprovalPage";
 import BusinessDashboard from "./BusinessDashboard";
 import SupplierDashboard from "./SupplierDashboard";
 import BInventoryPage from "./BInventoryPage";
@@ -9,87 +12,72 @@ import BAnalyticsPage from "./BAnalyticsPage";
 import BAIInsightsPage from "./BAIInsightsPage";
 import BAlertsPage from "./BAlertsPage";
 import SBusinessMarketplace from "./SBusinessMarketplace";
-import SAnalyticsPage from "./SAnalyticsPage";
-import SAIInsightsPage from "./SAIInsightsPage";
-import SSettingsPage from "./SSettingsPage";
-import ChatWidget from "./ChatWidget";
-
-
-const fontLink = document.createElement("link");
-fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
-fontLink.rel = "stylesheet";
-document.head.appendChild(fontLink);
+import { getBusinessByEmail, submitBusiness } from "./businessStore";
 
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [viewState, setViewState] = useState({ nav: "Dashboard", settingsTab: null });
-  const [showVerificationPrompt, setShowVerificationPrompt] = useState(false);
-  const [verificationStatus, setVerificationStatus] = useState("Not Verified");
-  const [hasSeenVerificationPrompt, setHasSeenVerificationPrompt] = useState(false);
+  const [needsBusinessDetails, setNeedsBusinessDetails] = useState(false);
 
-  useEffect(() => {
-    const stored = window.localStorage.getItem("gstVerificationState");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (parsed?.status) setVerificationStatus(parsed.status);
-        if (parsed?.hasSeenPrompt) setHasSeenVerificationPrompt(true);
-      } catch {
-        // Ignore malformed persisted state and fall back to defaults.
-      }
+  // Dev-only admin route: open the app with ?admin=1 to review registrations.
+  // Replace with real admin auth before going to production.
+  const isAdminRoute = new URLSearchParams(window.location.search).get("admin") === "1";
+  if (isAdminRoute) return <AdminApprovalPage />;
+
+  function handleLogin(userData) {
+    setUser(userData);
+    if (userData.mode === "register" && userData.role === "business") {
+      setNeedsBusinessDetails(true);
     }
-  }, []);
+  }
 
-  useEffect(() => {
-    if (!user || user.role !== "business") {
-      setShowVerificationPrompt(false);
-      return;
-    }
+  function handleBusinessDetailsSubmit(businessData) {
+    submitBusiness(user.email, businessData);
+    setNeedsBusinessDetails(false);
+  }
 
-    if (verificationStatus !== "Verified" && !hasSeenVerificationPrompt) {
-      setShowVerificationPrompt(true);
-    }
-  }, [user, verificationStatus, hasSeenVerificationPrompt]);
+  function handleLogout() {
+    setUser(null);
+    setNeedsBusinessDetails(false);
+  }
 
-  useEffect(() => {
-    window.localStorage.setItem(
-      "gstVerificationState",
-      JSON.stringify({
-        status: verificationStatus,
-        hasSeenPrompt: hasSeenVerificationPrompt,
-      }),
-    );
-  }, [verificationStatus, hasSeenVerificationPrompt]);
+  if (!user) return <LoginPage onLogin={handleLogin} />;
 
-  let currentPage = <LoginPage onLogin={setUser} />;
-
-  if (user?.role === "business") {
-    currentPage = (
-      <BusinessDashboard
-        activeNav={viewState.nav}
-        onNavChange={(nav) => setViewState((prev) => ({ ...prev, nav }))}
-        settingsTab={viewState.settingsTab}
-        onSettingsTabChange={(settingsTab) => setViewState((prev) => ({ ...prev, settingsTab }))}
-        verificationStatus={verificationStatus}
-        onVerificationStatusChange={setVerificationStatus}
-        verificationPromptOpen={showVerificationPrompt}
-        onCloseVerificationPrompt={() => {
-          setShowVerificationPrompt(false);
-          setHasSeenVerificationPrompt(true);
-        }}
+  if (needsBusinessDetails) {
+    return (
+      <BRegisterBusinessPage
+        user={user}
+        onSubmit={handleBusinessDetailsSubmit}
+        onBack={() => setNeedsBusinessDetails(false)}
       />
     );
   }
 
-  if (user?.role === "supplier") {
-    currentPage = <SupplierDashboard user={user} />;
+  if (user.role === "business") {
+    const myBusiness = getBusinessByEmail(user.email);
+
+    if (!myBusiness) {
+      return (
+        <BRegisterBusinessPage
+          user={user}
+          onSubmit={handleBusinessDetailsSubmit}
+          onBack={handleLogout}
+        />
+      );
+    }
+
+    if (myBusiness.status === "pending" || myBusiness.status === "rejected") {
+      return (
+        <BusinessStatusPage
+          business={myBusiness}
+          onRetry={() => setNeedsBusinessDetails(true)}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    return <BusinessDashboard />;
   }
 
-  return (
-    <>
-      {currentPage}
-      <ChatWidget />
-    </>
-  );
+  if (user.role === "supplier") return <SupplierDashboard />;
 }
