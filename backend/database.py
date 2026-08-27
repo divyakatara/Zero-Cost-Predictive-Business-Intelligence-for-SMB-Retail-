@@ -3,9 +3,12 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 # PostgreSQL database URL.
 # Replace YOUR_PASSWORD with your actual PostgreSQL password before running.
-DATABASE_URL = "postgresql://postgres:password-56@localhost:5432/smart_erp_users"
+import os
+from dotenv import load_dotenv
 
-# SQLAlchemy engine connects FastAPI to PostgreSQL.
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password-56@localhost:5432/smart_erp_users")# SQLAlchemy engine connects FastAPI to PostgreSQL.
 engine = create_engine(DATABASE_URL)
 
 # SessionLocal creates database sessions for each API request.
