@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { API_BASE_URL } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -32,12 +31,10 @@ export default function LoginPage({ onLogin }) {
   const [name,     setName]     = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
-  const [gstin,    setGstin]    = useState("");
   const [showPass, setShowPass] = useState(false);
   const [error,    setError]    = useState("");
-  const [loading,  setLoading]  = useState(false);
 
-  async function handleSubmit(e) {
+  function handleSubmit(e) {
     e.preventDefault();
     setError("");
 
@@ -53,38 +50,8 @@ export default function LoginPage({ onLogin }) {
       setError("Please enter your name.");
       return;
     }
-    if (mode === "register" && ["business", "supplier"].includes(role) && !gstin) {
-      setError("Please enter your GSTIN.");
-      return;
-    }
 
-    try {
-      setLoading(true);
-
-      const endpoint = mode === "register" ? "/auth/register" : "/auth/login";
-      const body = mode === "register"
-        ? { name, email, password, role, gstin }
-        : { email, password };
-
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.detail || "Something went wrong. Please try again.");
-        return;
-      }
-
-      onLogin(data.user);
-    } catch (err) {
-      setError("Could not connect to the backend. Make sure FastAPI is running.");
-    } finally {
-      setLoading(false);
-    }
+    onLogin({ name: name || email, email, role: role || "business", mode });
   }
 
   function switchMode(newMode) {
@@ -94,7 +61,6 @@ export default function LoginPage({ onLogin }) {
     setName("");
     setEmail("");
     setPassword("");
-    setGstin("");
   }
 
   return (
@@ -228,27 +194,6 @@ export default function LoginPage({ onLogin }) {
               </div>
             )}
 
-            {/* GSTIN - required for business and supplier registration */}
-            {mode === "register" && (
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
-                  GSTIN
-                </label>
-                <input
-                  type="text" value={gstin} onChange={e => setGstin(e.target.value)}
-                  placeholder="Enter your GSTIN"
-                  style={{
-                    width: "100%", padding: "11px 14px", borderRadius: 9, fontSize: 14,
-                    border: `1px solid ${C.border}`, background: C.bg, color: C.text,
-                    fontFamily: "'IBM Plex Sans', sans-serif", outline: "none",
-                    boxSizing: "border-box",
-                  }}
-                  onFocus={e => e.target.style.borderColor = C.green}
-                  onBlur={e  => e.target.style.borderColor = C.border}
-                />
-              </div>
-            )}
-
             {/* Email */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
@@ -317,7 +262,7 @@ export default function LoginPage({ onLogin }) {
               onMouseEnter={e => e.target.style.opacity = 0.9}
               onMouseLeave={e => e.target.style.opacity = 1}
             >
-              {loading ? "Please wait..." : mode === "login" ? "Sign In →" : "Create Account →"}
+              {mode === "login" ? "Sign In →" : "Create Account →"}
             </button>
 
           </form>
