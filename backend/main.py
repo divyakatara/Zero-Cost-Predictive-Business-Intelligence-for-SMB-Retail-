@@ -5,7 +5,7 @@ from sqlalchemy import text
 from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
-from routes import auth, business_pages, chat, dashboard, data, inventory, sales, supplier
+from routes import auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
 
 # Create database tables when the app starts.
 models.Base.metadata.create_all(bind=engine)
@@ -50,6 +50,25 @@ def run_simple_migrations():
         connection.execute(
             text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS supply_risk_score INTEGER")
         )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS on_time_delivery_rate FLOAT")
+        )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS quality_score FLOAT")
+        )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS reliability_score FLOAT")
+        )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS average_cost FLOAT")
+        )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS weighted_score FLOAT")
+        )
+        connection.execute(
+            text("ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS rank INTEGER")
+        )
+
         connection.execute(
             text("ALTER TABLE products ADD COLUMN IF NOT EXISTS product_code VARCHAR")
         )
@@ -146,6 +165,7 @@ app.add_middleware(
 
 # Register all route files.
 app.include_router(auth.router)
+app.include_router(anomaly.router)
 app.include_router(business_pages.router)
 app.include_router(dashboard.router)
 app.include_router(sales.router)

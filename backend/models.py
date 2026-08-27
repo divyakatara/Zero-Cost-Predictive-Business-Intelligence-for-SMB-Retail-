@@ -40,7 +40,15 @@ class Supplier(Base):
     stock_utilization_rate = Column(Integer, nullable=True)
     supply_risk_score = Column(Integer, nullable=True)
 
+    on_time_delivery_rate = Column(Float, nullable=True)
+    quality_score = Column(Float, nullable=True)
+    reliability_score = Column(Float, nullable=True)
+    average_cost = Column(Float, nullable=True)
+    weighted_score = Column(Float, nullable=True)
+    rank = Column(Integer, nullable=True)
+
     products = relationship("Product", back_populates="supplier")
+
 
 
 class Product(Base):

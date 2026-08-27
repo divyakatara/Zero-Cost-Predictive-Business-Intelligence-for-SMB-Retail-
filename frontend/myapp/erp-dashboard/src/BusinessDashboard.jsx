@@ -16,6 +16,7 @@ import BAnalyticsPage from "./BAnalyticsPage";
 import BAIInsightsPage from "./BAIInsightsPage";
 import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
+import ChatWidget from "./ChatWidget";
 import { API_BASE_URL } from "./api";
 
 const fontLink = document.createElement("link");
@@ -142,7 +143,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function ERPDashboard({
-  activeNav,
+  activeNav: activeNavProp,
   onNavChange,
   settingsTab,
   onSettingsTabChange,
@@ -150,8 +151,12 @@ export default function ERPDashboard({
   onVerificationStatusChange,
   verificationPromptOpen,
   onCloseVerificationPrompt,
+  business,
+  onLogout,
 }) {
-  const isVerified = verificationStatus === "Verified";
+  const [internalNav, setInternalNav] = useState("Dashboard");
+  const activeNav = activeNavProp || internalNav;
+  const isVerified = business ? business.status === "approved" : verificationStatus === "Verified";
   const [overview, setOverview] = useState(createEmptyOverview);
   const [dashboardError, setDashboardError] = useState("");
 
@@ -208,6 +213,7 @@ export default function ERPDashboard({
   }, [activeNav]);
 
   function handleNavClick(label) {
+    setInternalNav(label);
     onNavChange?.(label);
     if (label === "Settings") {
       onSettingsTabChange?.("Verification");
@@ -221,6 +227,8 @@ export default function ERPDashboard({
 
   const sidebarBtn = (item) => {
     const active = activeNav === item.label;
+    const isLocked = item.label === "Supplier Marketplace" && business && business.status !== "approved";
+
     return (
       <button
         key={item.label}
@@ -247,8 +255,13 @@ export default function ERPDashboard({
         }}
       >
         <span style={{ fontSize: 14 }}>{item.icon}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          {item.label}
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
+          <span>{item.label}</span>
+          {isLocked && (
+            <span title="Restricted until Admin Approval" style={{ fontSize: 11, background: "rgba(238, 222, 162, 0.2)", color: "#ecdca2", padding: "1px 6px", borderRadius: 4 }}>
+              🔒 Locked
+            </span>
+          )}
           {item.label === "Settings" && !isVerified && (
             <span
               aria-label="Not verified"
@@ -373,8 +386,95 @@ export default function ERPDashboard({
           </div>
         </div>
       </aside>
-
       <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
+        {/* Status Notice Banner for Pending or Rejected Business Users */}
+        {business && business.status === "pending" && (
+          <div
+            style={{
+              background: "#fbf3e3",
+              border: "1px solid #ecdca2",
+              borderRadius: 12,
+              padding: "16px 22px",
+              marginBottom: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(166,122,46,0.08)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span style={{ fontSize: 24 }}>⏳</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: "#8a601e", fontFamily: "Syne, sans-serif" }}>
+                  Registration Under Admin Review
+                </div>
+                <div style={{ fontSize: 12, color: "#6a5018", marginTop: 2, lineHeight: 1.5 }}>
+                  Your business <strong>"{business.businessName || "Profile"}"</strong> is pending manual verification. Standard features are available, but procurement, placing orders, and Supplier Marketplace are restricted until approved.
+                </div>
+              </div>
+            </div>
+            <span
+              style={{
+                background: "#a67a2e",
+                color: "#fff",
+                padding: "6px 14px",
+                borderRadius: 20,
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.5px",
+                flexShrink: 0,
+              }}
+            >
+              Pending Approval
+            </span>
+          </div>
+        )}
+
+        {business && business.status === "rejected" && (
+          <div
+            style={{
+              background: "#fdf0f0",
+              border: "1px solid #f0c8c0",
+              borderRadius: 12,
+              padding: "16px 22px",
+              marginBottom: 28,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              boxShadow: "0 2px 8px rgba(184,84,63,0.08)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span style={{ fontSize: 24, color: C.danger }}>✕</span>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 14, color: C.danger, fontFamily: "Syne, sans-serif" }}>
+                  Registration Not Approved
+                </div>
+                <div style={{ fontSize: 12, color: "#8a3a2e", marginTop: 2, lineHeight: 1.5 }}>
+                  Reason: {business.rejectionReason || "Details could not be verified."}. Please update your profile in Settings to resubmit.
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => handleNavClick("Settings")}
+              style={{
+                background: C.danger,
+                color: "#fff",
+                border: "none",
+                padding: "8px 16px",
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+                flexShrink: 0,
+              }}
+            >
+              Update Profile
+            </button>
+          </div>
+        )}
+
         {activeNav === "Dashboard" && (
           <div
             style={{
@@ -422,9 +522,9 @@ export default function ERPDashboard({
                   letterSpacing: "0.5px",
                 }}
               >
-                {overview.hasData
-                  ? "AI-Driven overview · Live PostgreSQL data"
-                  : "AI-Driven overview · Waiting for backend data"}
+                {overview.summary.salesToday
+                  ? "Live store performance & inventory metrics"
+                  : "Overview & summary · Live database data"}
               </p>
             </div>
             <div
@@ -459,6 +559,86 @@ export default function ERPDashboard({
                 }}
               >
                 {dashboardError}
+              </div>
+            )}
+
+            {!overview.hasData && !dashboardError && (
+              <div style={{
+                background: "linear-gradient(135deg, #f5f2ec 0%, #eef4ee 100%)",
+                border: `1px solid ${C.greenBorder}`,
+                borderRadius: 14,
+                padding: "36px 40px",
+                marginBottom: 28,
+                display: "flex",
+                alignItems: "center",
+                gap: 32,
+                boxShadow: "0 2px 12px rgba(74,122,73,0.08)",
+              }}>
+                <div style={{ fontSize: 56 }}>📊</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ ...syne, fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 8 }}>
+                    No Business Data Connected
+                  </div>
+                  <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 20 }}>
+                    Your dashboards are ready, but no sales or inventory data has been imported yet.
+                    Load the built-in demo dataset or upload your own Excel/CSV file to activate live analytics, charts, and AI insights.
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await fetch(`${API_BASE_URL}/api/data/load-demo`, { method: "POST" });
+                          if (res.ok) {
+                            const data = await res.json();
+                            const response2 = await fetch(`${API_BASE_URL}/dashboard/overview`);
+                            if (response2.ok) {
+                              const newData = await response2.json();
+                              setOverview({
+                                ...createEmptyOverview(),
+                                ...newData,
+                                monthlySales: newData.monthlySales?.length ? newData.monthlySales : emptySalesData,
+                                topProducts: newData.topProducts?.length
+                                  ? newData.topProducts.map((item, i) => ({ ...item, color: chartColors[i % chartColors.length] }))
+                                  : emptyProductSalesData,
+                              });
+                              setDashboardError("");
+                            }
+                          }
+                        } catch { /* ignore */ }
+                      }}
+                      style={{
+                        padding: "10px 22px",
+                        background: C.green,
+                        color: "#fff",
+                        border: "none",
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "'IBM Plex Sans', sans-serif",
+                        boxShadow: "0 4px 16px rgba(74,122,73,0.25)",
+                      }}
+                    >
+                      🗄️ Load Demo Dataset
+                    </button>
+                    <button
+                      onClick={() => handleNavClick("Settings")}
+                      style={{
+                        padding: "10px 22px",
+                        background: "#fff",
+                        color: C.green,
+                        border: `1px solid ${C.greenBorder}`,
+                        borderRadius: 8,
+                        fontSize: 13,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        fontFamily: "'IBM Plex Sans', sans-serif",
+                      }}
+                    >
+                      ⚙️ Go to Data Settings
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1180,7 +1360,23 @@ export default function ERPDashboard({
 
         {activeNav === "Inventory" && <InventoryPage />}
         {activeNav === "Sales" && <SalesPage />}
-        {activeNav === "Supplier Marketplace" && <SupplierMarketplacePage />}
+        {activeNav === "Supplier Marketplace" && (
+          business && business.status !== "approved" ? (
+            <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, padding: "60px 40px", textAlign: "center", maxWidth: 560, margin: "40px auto", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
+              <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.warnBg, color: C.warn, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px", border: "1px solid #ecdca2" }}>🔒</div>
+              <h2 style={{ ...syne, fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 10 }}>Supplier Marketplace Restricted</h2>
+              <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 24 }}>
+                Procurement, placing orders, and supplier marketplace features require an approved business account. Your business profile is currently <strong>{business.status === "rejected" ? "rejected" : "under review by Admin"}</strong>.
+              </p>
+              <div style={{ background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: 16, fontSize: 12, color: C.green, textAlign: "left", marginBottom: 24 }}>
+                <strong>Automatic Unlock:</strong> Once System Admin reviews and approves your business details, this feature will automatically unlock without requiring a new account.
+              </div>
+              <button onClick={() => handleNavClick("Settings")} style={{ background: C.green, color: "#fff", border: "none", padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Check Account Verification →</button>
+            </div>
+          ) : (
+            <SupplierMarketplacePage />
+          )
+        )}
         {activeNav === "Analytics" && <BAnalyticsPage />}
         {activeNav === "AI Insights" && <BAIInsightsPage />}
         {activeNav === "Alerts" && <BAlertsPage />}
@@ -1273,6 +1469,10 @@ export default function ERPDashboard({
           </div>
         </div>
       )}
+
+      {/* Gemini Chatbot for Business Users */}
+      <ChatWidget />
     </div>
   );
 }
+

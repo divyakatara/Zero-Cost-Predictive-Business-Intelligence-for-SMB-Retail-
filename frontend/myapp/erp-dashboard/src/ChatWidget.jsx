@@ -2,38 +2,44 @@ import { useEffect, useRef, useState } from "react";
 import "./ChatWidget.css";
 import { API_BASE_URL } from "./api";
 
-const chatbotIcon = "/chatbot-icon.png";
-
-const SUGGESTED_PROMPTS = [
+const BUSINESS_PROMPTS = [
   "What are my top-selling products?",
   "Which items need restocking?",
   "How are my suppliers performing?",
-  "Show me total revenue this year.",
+  "How to connect my business data?",
 ];
 
-export default function ChatWidget() {
+const ADMIN_PROMPTS = [
+  "How many pending business approvals?",
+  "List registered business owners",
+  "Approval queue summary",
+  "Admin platform guide",
+];
+
+export default function ChatWidget({ role = "business" }) {
+  const isAdmin = role === "admin";
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
     {
       sender: "ai",
-      text: "Hi! I'm your ERP assistant powered by Gemini AI. Ask me about your sales, inventory, suppliers, or reorder recommendations.",
+      text: isAdmin
+        ? "Hi! I'm your Smart ERP System Admin assistant. Ask me about registered businesses, pending approval queues, system status, or user roles."
+        : "Hi! I'm your ERP assistant powered by Gemini AI. Ask me about sales, inventory, suppliers, or general retail guidance.",
     },
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const suggestedPrompts = isAdmin ? ADMIN_PROMPTS : BUSINESS_PROMPTS;
 
-  // Auto-scroll to the bottom whenever a new message arrives.
   useEffect(() => {
     if (isOpen) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isLoading, isOpen]);
 
-  // Focus the input whenever the panel opens.
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 150);
@@ -41,129 +47,105 @@ export default function ChatWidget() {
   }, [isOpen]);
 
   async function sendMessage(overrideText) {
-    const trimmedInput = (overrideText ?? input).trim();
-    if (!trimmedInput || isLoading) return;
+    const text = (overrideText ?? input).trim();
+    if (!text || isLoading) return;
 
-    setMessages((prev) => [...prev, { sender: "user", text: trimmedInput }]);
+    setMessages((prev) => [...prev, { sender: "user", text }]);
     setInput("");
     setIsLoading(true);
-    setError(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat`, {
+      const res = await fetch(`${API_BASE_URL}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: trimmedInput }),
+        body: JSON.stringify({ message: text, role }),
       });
 
-      if (!response.ok) {
-        let detail = `Server error (${response.status})`;
-        try {
-          const body = await response.json();
-          if (body?.detail) detail = body.detail;
-        } catch {
-          // ignore JSON parse errors — keep generic message
-        }
-        throw new Error(detail);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages((prev) => [...prev, { sender: "ai", text: data.reply }]);
+      } else {
+        throw new Error("Server error");
       }
-
-      const data = await response.json();
-      setMessages((prev) => [...prev, { sender: "ai", text: data.reply }]);
-    } catch (err) {
-      const errorText =
-        err.message && err.message !== "Failed to fetch"
-          ? err.message
-          : "Could not reach the ERP server. Please make sure the backend is running.";
-      setError(errorText);
-      setMessages((prev) => [
-        ...prev,
-        { sender: "ai", text: errorText, isError: true },
-      ]);
+    } catch {
+      const fallback = isAdmin
+        ? "You can manage pending business registrations under the Business Approvals section. Approving a business unlocks full ERP access."
+        : "I wasn't able to reach the server right now. If you haven't connected your business data yet, head to Settings → Data Connection to upload your Excel or CSV file.";
+      setMessages((prev) => [...prev, { sender: "ai", text: fallback, isError: true }]);
     } finally {
       setIsLoading(false);
     }
   }
 
-  function handleKeyDown(event) {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
+  function handleKeyDown(e) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
       sendMessage();
     }
   }
 
-  function handleSuggestedPrompt(prompt) {
-    sendMessage(prompt);
-  }
-
-  // Render text with newlines preserved and markdown asterisks stripped.
-  function renderText(text) {
-    const cleaned = text.replaceAll("**", "").replaceAll("* ", "• ").replaceAll("*", "");
-    return cleaned.split("\n").map((line, i) => (
-      <span key={i}>
-        {line}
-        {i < cleaned.split("\n").length - 1 && <br />}
-      </span>
-    ));
-  }
-
-  const showSuggestions =
-    messages.length === 1 && !isLoading;
+  const headerBg = isAdmin ? "#2a2a2a" : "var(--chat-green)";
+  const headerColor = "#ffffff";
 
   return (
     <>
       {/* Floating toggle button */}
       <button
         className="chat-toggle"
-        type="button"
-        aria-label="Toggle AI Assistant"
-        onClick={() => setIsOpen((prev) => !prev)}
+        onClick={() => setIsOpen((o) => !o)}
+        aria-label={isOpen ? "Close AI Assistant" : "Open AI Assistant"}
+        style={{ background: isAdmin ? "#2a2a2a" : "var(--chat-card)" }}
       >
-        <img
-          src={chatbotIcon}
-          alt="AI Assistant"
-          className="chat-toggle-img"
-        />
+        <span style={{ fontSize: 26, lineHeight: 1 }}>🤖</span>
       </button>
 
-      {/* Chat panel */}
-      <aside className={`chat-panel ${isOpen ? "chat-panel-open" : ""}`} aria-live="polite">
+      {/* Sliding chat panel */}
+      <div className={`chat-panel${isOpen ? " chat-panel-open" : ""}`}>
         {/* Header */}
-        <header className="chat-header">
+        <div
+          className="chat-header"
+          style={{ background: headerBg, borderBottom: "none" }}
+        >
           <div className="chat-header-title">
-            <img src={chatbotIcon} alt="" className="chat-header-icon" />
+            <span style={{ fontSize: 22 }}>🤖</span>
             <div>
-              <h2>ERP AI Assistant</h2>
-              <span className="chat-header-sub">Powered by Gemini</span>
+              <h2 style={{ color: headerColor, margin: 0, fontSize: 14, fontWeight: 700 }}>
+                {isAdmin ? "System Admin Assistant" : "Gemini ERP Assistant"}
+              </h2>
+              <div className="chat-header-sub" style={{ color: "rgba(255,255,255,0.75)" }}>
+                {isAdmin ? "Admin Queue & Platform AI" : "AI-Powered Retail Guide"}
+              </div>
             </div>
           </div>
           <button
             className="chat-close"
-            type="button"
-            aria-label="Close AI Assistant"
             onClick={() => setIsOpen(false)}
+            aria-label="Close chat"
+            style={{ borderColor: "rgba(255,255,255,0.3)", color: headerColor }}
           >
             ✕
           </button>
-        </header>
+        </div>
 
         {/* Messages */}
         <div className="chat-messages">
-          {messages.map((message, index) => (
+          {messages.map((msg, i) => (
             <div
-              className={`chat-message chat-message-${message.sender}${message.isError ? " chat-message-error" : ""}`}
-              key={`${message.sender}-${index}`}
+              key={i}
+              className={`chat-message ${msg.sender === "user" ? "chat-message-user" : "chat-message-ai"}${msg.isError ? " chat-message-error" : ""}`}
             >
-              {message.sender === "ai" && (
-                <span className="chat-message-label">AI</span>
+              {msg.sender === "ai" && (
+                <span className="chat-message-label">
+                  {isAdmin ? "Admin AI" : "ERP Assistant"}
+                </span>
               )}
-              <div className="chat-message-text">{renderText(message.text)}</div>
+              <div className="chat-message-text">{msg.text}</div>
             </div>
           ))}
 
-          {/* Loading indicator */}
+          {/* Typing indicator */}
           {isLoading && (
             <div className="chat-message chat-message-ai">
-              <span className="chat-message-label">AI</span>
               <div className="chat-typing">
                 <span />
                 <span />
@@ -172,66 +154,56 @@ export default function ChatWidget() {
             </div>
           )}
 
-          {/* Suggested prompts — shown only at start */}
-          {showSuggestions && (
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Suggested prompts — only show when no user messages yet */}
+        {messages.length <= 1 && !isLoading && (
+          <div style={{ padding: "0 14px 10px", background: "var(--chat-bg)" }}>
             <div className="chat-suggestions">
-              <p className="chat-suggestions-label">Try asking:</p>
-              {SUGGESTED_PROMPTS.map((prompt) => (
+              <p className="chat-suggestions-label">Suggested</p>
+              {suggestedPrompts.map((p) => (
                 <button
-                  key={prompt}
+                  key={p}
                   className="chat-suggestion-btn"
-                  type="button"
-                  onClick={() => handleSuggestedPrompt(prompt)}
+                  onClick={() => sendMessage(p)}
+                  disabled={isLoading}
                 >
-                  {prompt}
+                  {p}
                 </button>
               ))}
             </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
+          </div>
+        )}
 
         {/* Input row */}
         <div className="chat-input-row">
           <input
             ref={inputRef}
-            id="chat-input"
             type="text"
+            placeholder={isAdmin ? "Ask admin assistant..." : "Ask ERP assistant..."}
             value={input}
-            placeholder={isLoading ? "Thinking…" : "Ask about your ERP data…"}
-            disabled={isLoading}
-            onChange={(event) => setInput(event.target.value)}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            autoComplete="off"
+            disabled={isLoading}
+            aria-label="Chat input"
           />
           <button
-            id="chat-send-btn"
-            type="button"
-            disabled={isLoading || !input.trim()}
             onClick={() => sendMessage()}
+            disabled={isLoading || !input.trim()}
             aria-label="Send message"
           >
             {isLoading ? (
               <span className="chat-send-spinner" />
             ) : (
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13" />
                 <polygon points="22 2 15 22 11 13 2 9 22 2" />
               </svg>
             )}
           </button>
         </div>
-      </aside>
+      </div>
     </>
   );
 }

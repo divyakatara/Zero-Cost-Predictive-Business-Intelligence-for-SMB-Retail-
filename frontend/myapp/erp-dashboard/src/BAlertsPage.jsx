@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchJson } from "./api";
+import { fetchJson, formatCurrency } from "./api";
 
 const C = {
   bg: "#f5f2ec",
@@ -20,193 +20,436 @@ const C = {
 
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
-const filters = ["All", "Open", "Resolved"];
-
-const emptyState = {
-  headerNote: "Important business warnings and activity flags · Waiting for backend data",
-  kpis: [],
-  inventoryAlerts: [],
-  salesAlerts: [],
-  systemAlerts: [],
-  recentTable: [],
-};
-
-function AlertCard({ item, tone }) {
-  return (
-    <div style={{ background: tone === "danger" ? C.dangerBg : tone === "warn" ? C.warnBg : C.greenSubtle, border: `1px solid ${tone === "danger" ? "#f2bcbc" : tone === "warn" ? "#ecdca2" : C.greenBorder}`, borderRadius: 10, padding: "16px 18px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.title}</div>
-          <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{item.subtitle}</div>
-        </div>
-        <span style={{ background: "#fff", color: tone === "danger" ? C.danger : tone === "warn" ? C.warn : C.green, border: `1px solid ${tone === "danger" ? "#f2bcbc" : tone === "warn" ? "#ecdca2" : C.greenBorder}`, borderRadius: 20, padding: "3px 10px", fontSize: 10, fontWeight: 700 }}>
-          {item.severity}
-        </span>
-      </div>
-      <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 8 }}>
-        Status: <span style={{ fontWeight: 700, color: C.text }}>{item.status}</span>
-      </div>
-      <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>{item.note}</div>
-    </div>
-  );
-}
+const filters = ["All", "High Risk", "Moderate Risk"];
 
 export default function BAlertsPage() {
   const [filter, setFilter] = useState("All");
-  const [data, setData] = useState(emptyState);
+  const [search, setSearch] = useState("");
+  const [summary, setSummary] = useState(null);
+  const [anomalies, setAnomalies] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let ignore = false;
-
-    async function loadData() {
-      try {
-        const response = await fetchJson("/business-pages/alerts");
-        if (!ignore) {
-          setData(response);
-          setError("");
-        }
-      } catch {
-        if (!ignore) {
-          setData(emptyState);
-          setError("Could not load alerts from the backend.");
-        }
-      }
+  const loadData = async (refresh = false) => {
+    setLoading(true);
+    setError("");
+    try {
+      const refreshQuery = refresh ? "?refresh=true" : "";
+      const [sumRes, anoRes] = await Promise.all([
+        fetchJson(`/anomaly/summary${refreshQuery}`),
+        fetchJson(`/anomaly/anomalies?limit=200${refresh ? "&refresh=true" : ""}`),
+      ]);
+      setSummary(sumRes);
+      setAnomalies(anoRes.results || []);
+    } catch (err) {
+      setError(err.message || "Failed to load anomaly detection data from Isolation Forest model.");
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     loadData();
-    return () => {
-      ignore = true;
-    };
   }, []);
 
-  const filterRows = (rows) =>
-    (rows || []).filter((row) => filter === "All" || row.status === filter);
+  const filteredAnomalies = anomalies.filter((item) => {
+    // Filter by risk severity based on score (more negative = higher risk)
+    if (filter === "High Risk" && (item.anomaly_score === undefined || item.anomaly_score >= -0.03)) {
+      return false;
+    }
+    if (filter === "Moderate Risk" && (item.anomaly_score === undefined || item.anomaly_score < -0.03)) {
+      return false;
+    }
+
+    if (search.trim() !== "") {
+      const q = search.toLowerCase();
+      const matchTx = (item.transaction_id || "").toString().toLowerCase().includes(q);
+      const matchProd = (item.product_id || "").toString().toLowerCase().includes(q);
+      const matchBranch = (item.branch_id || "").toString().toLowerCase().includes(q);
+      const matchExp = (item.explanation || "").toLowerCase().includes(q);
+      return matchTx || matchProd || matchBranch || matchExp;
+    }
+    return true;
+  });
+
+  const formatDate = (val) => {
+    if (!val) return "-";
+    try {
+      const d = new Date(val);
+      return d.toLocaleDateString("en-IN", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
+      return String(val);
+    }
+  };
 
   return (
     <div style={{ ...ibm }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
+      {/* HEADER */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
             <div style={{ width: 3, height: 28, background: C.green, borderRadius: 2 }} />
-            <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "0.5px" }}>Alerts</h1>
+            <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "0.5px" }}>
+              Error & Anomaly Detection
+            </h1>
           </div>
-          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>{data.headerNote}</p>
+          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>
+            Isolation Forest Model · 200 estimators · 2% contamination threshold · 3,650 records analyzed
+          </p>
         </div>
-        <div style={{ display: "flex", background: "#eee8e0", borderRadius: 10, padding: 4, gap: 2 }}>
-          {filters.map((item) => (
-            <button
-              key={item}
-              onClick={() => setFilter(item)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 7,
-                border: "none",
-                background: filter === item ? C.card : "transparent",
-                color: filter === item ? C.text : C.textDim,
-                fontWeight: filter === item ? 600 : 400,
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                boxShadow: filter === item ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                transition: "all .15s",
-              }}
-            >
-              {item}
-            </button>
-          ))}
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button
+            onClick={() => loadData(true)}
+            disabled={loading}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              border: `1px solid ${C.greenBorder}`,
+              background: C.greenSubtle,
+              color: C.green,
+              fontWeight: 600,
+              fontSize: 12,
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            {loading ? "Re-scoring..." : "Retrain & Refresh ML Model"}
+          </button>
         </div>
       </div>
 
+      {/* ERROR STATE */}
       {error && (
-        <div style={{ marginBottom: 18, padding: "12px 14px", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 10, color: C.textMuted, fontSize: 13 }}>
-          {error}
+        <div
+          style={{
+            marginBottom: 20,
+            padding: "14px 18px",
+            background: C.dangerBg,
+            border: `1px solid #f2bcbc`,
+            borderRadius: 10,
+            color: C.danger,
+            fontSize: 13,
+            display: "flex",
+            justify: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <strong>Error:</strong> {error}
+          </div>
+          <button
+            onClick={() => loadData()}
+            style={{
+              padding: "4px 10px",
+              background: C.card,
+              border: `1px solid ${C.border}`,
+              borderRadius: 6,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
-        {(data.kpis || []).map((kpi, index) => (
-          <div key={kpi.label} style={{ background: index === 0 ? C.green : C.card, borderRadius: 12, padding: "22px 24px", border: index === 0 ? "none" : `1px solid ${C.border}`, boxShadow: index === 0 ? "0 4px 16px rgba(74,122,73,0.2)" : "0 1px 4px rgba(0,0,0,0.04)", position: "relative", overflow: "hidden" }}>
-            {index === 0 && <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <span style={{ fontSize: 10, color: index === 0 ? "rgba(255,255,255,0.7)" : C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>{kpi.label}</span>
-              <span style={{ fontSize: 18, color: index === 0 ? "rgba(255,255,255,0.8)" : C.textDim }}>!</span>
+      {/* LOADING STATE */}
+      {loading && !summary && (
+        <div
+          style={{
+            padding: "60px 0",
+            textAlign: "center",
+            background: C.card,
+            borderRadius: 12,
+            border: `1px solid ${C.border}`,
+            color: C.textMuted,
+          }}
+        >
+          <div style={{ ...syne, fontSize: 16, fontWeight: 700, marginBottom: 8 }}>
+            Running Isolation Forest Error Detection...
+          </div>
+          <div style={{ fontSize: 12, color: C.textDim }}>Evaluating transaction features across 10 dimensions</div>
+        </div>
+      )}
+
+      {/* SUMMARY KPIS */}
+      {summary && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+            <div
+              style={{
+                background: C.green,
+                borderRadius: 12,
+                padding: "22px 24px",
+                color: "#fff",
+                position: "relative",
+                overflow: "hidden",
+                boxShadow: "0 4px 16px rgba(74,122,73,0.2)",
+              }}
+            >
+              <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
+                  Potential Anomalies
+                </span>
+                <span style={{ fontSize: 18, color: "rgba(255,255,255,0.8)" }}>!</span>
+              </div>
+              <div style={{ ...syne, fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{summary.total_anomalies}</div>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 8 }}>
+                Flagged for business review
+              </div>
             </div>
-            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: index === 0 ? "#fff" : C.text, lineHeight: 1 }}>{kpi.value}</div>
-            <div style={{ fontSize: 12, color: index === 0 ? "rgba(255,255,255,0.65)" : C.textDim, marginTop: 8 }}>{kpi.sub}</div>
-          </div>
-        ))}
-      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 24 }}>
-        <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Inventory Alerts</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Stock, reorder and inventory issues</div>
-          </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {filterRows(data.inventoryAlerts).map((item) => (
-              <AlertCard key={item.title} item={item} tone="warn" />
-            ))}
-          </div>
-        </div>
+            <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
+                  Contamination Rate
+                </span>
+                <span style={{ fontSize: 16, color: C.textDim }}>%</span>
+              </div>
+              <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
+                {(summary.contamination_rate * 100).toFixed(1)}%
+              </div>
+              <div style={{ fontSize: 12, color: C.textDim, marginTop: 8 }}>Target contamination threshold</div>
+            </div>
 
-        <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Sales Alerts</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Revenue and demand warnings</div>
-          </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {filterRows(data.salesAlerts).map((item) => (
-              <AlertCard key={item.title} item={item} tone="danger" />
-            ))}
-          </div>
-        </div>
-      </div>
+            <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
+                  Total Evaluated
+                </span>
+                <span style={{ fontSize: 16, color: C.textDim }}>#</span>
+              </div>
+              <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
+                {summary.total_rows?.toLocaleString("en-IN")}
+              </div>
+              <div style={{ fontSize: 12, color: C.textDim, marginTop: 8 }}>Transaction sheet rows</div>
+            </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 18, marginBottom: 24 }}>
-        <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.green, fontSize: 15 }}>Operations & System Alerts</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Supplier, workflow and system attention points</div>
+            <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
+                  Normal Rows
+                </span>
+                <span style={{ fontSize: 16, color: C.textDim }}>✓</span>
+              </div>
+              <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
+                {summary.normal_rows?.toLocaleString("en-IN")}
+              </div>
+              <div style={{ fontSize: 12, color: C.textDim, marginTop: 8 }}>
+                {summary.total_rows ? ((summary.normal_rows / summary.total_rows) * 100).toFixed(1) : 0}% standard transactions
+              </div>
+            </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {filterRows(data.systemAlerts).map((item) => (
-              <AlertCard key={item.title} item={item} tone="normal" />
-            ))}
-          </div>
-        </div>
-      </div>
 
+          {/* DISTRIBUTION BREAKDOWN */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 24 }}>
+            <div style={{ background: C.card, borderRadius: 12, padding: "22px", border: `1px solid ${C.border}` }}>
+              <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>
+                Top Anomalies by Product
+              </div>
+              <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Products with highest count of flag signals</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {Object.entries(summary.anomalies_per_product || {}).slice(0, 6).map(([prod, cnt]) => (
+                  <div
+                    key={prod}
+                    style={{
+                      background: C.warnBg,
+                      border: `1px solid #ecdca2`,
+                      borderRadius: 8,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: C.text }}>{prod}</span>
+                    <span style={{ background: C.warn, color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+                      {cnt} anomalies
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ background: C.card, borderRadius: 12, padding: "22px", border: `1px solid ${C.border}` }}>
+              <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>
+                Top Anomalies by Branch
+              </div>
+              <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14 }}>Branch locations needing error inspection</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {Object.entries(summary.anomalies_per_branch || {}).slice(0, 6).map(([branch, cnt]) => (
+                  <div
+                    key={branch}
+                    style={{
+                      background: C.greenSubtle,
+                      border: `1px solid ${C.greenBorder}`,
+                      borderRadius: 8,
+                      padding: "6px 12px",
+                      fontSize: 12,
+                      display: "flex",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: C.text }}>{branch}</span>
+                    <span style={{ background: C.green, color: "#fff", borderRadius: 10, padding: "1px 7px", fontSize: 11, fontWeight: 700 }}>
+                      {cnt} anomalies
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* ANOMALY LOG TABLE */}
       <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-        <div style={{ marginBottom: 18 }}>
-          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Alert Log</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recent alert summary · Live database data</div>
-        </div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {["Type", "Alert", "Severity", "Status"].map((heading) => (
-                <th key={heading} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>{heading}</th>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 16 }}>Detected Anomaly Records</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+              Showing {filteredAnomalies.length} of {anomalies.length} anomaly transactions scored by Isolation Forest
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            <input
+              type="text"
+              placeholder="Search ID, Product, Branch, Reason..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 8,
+                border: `1px solid ${C.border}`,
+                fontSize: 12,
+                width: 240,
+                outline: "none",
+                fontFamily: "'IBM Plex Sans', sans-serif",
+              }}
+            />
+
+            <div style={{ display: "flex", background: "#eee8e0", borderRadius: 8, padding: 3, gap: 2 }}>
+              {filters.map((item) => (
+                <button
+                  key={item}
+                  onClick={() => setFilter(item)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 6,
+                    border: "none",
+                    background: filter === item ? C.card : "transparent",
+                    color: filter === item ? C.text : C.textDim,
+                    fontWeight: filter === item ? 600 : 400,
+                    fontSize: 11,
+                    cursor: "pointer",
+                    fontFamily: "'IBM Plex Sans', sans-serif",
+                  }}
+                >
+                  {item}
+                </button>
               ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filterRows(data.recentTable).map((row, index) => (
-              <tr key={`${row.type}-${index}`} style={{ borderBottom: `1px solid ${C.border}` }}>
-                <td style={{ padding: "14px 12px", fontSize: 13, fontWeight: 600, color: C.text }}>{row.type}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.alert}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.severity}</td>
-                <td style={{ padding: "14px 12px" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.greenSubtle, color: C.green, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: `1px solid ${C.greenBorder}` }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-                    {row.status}
-                  </span>
-                </td>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}`, background: "#faf7f2" }}>
+                <th style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Transaction ID</th>
+                <th style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Date</th>
+                <th style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Product</th>
+                <th style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Branch</th>
+                <th style={{ textAlign: "right", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Qty</th>
+                <th style={{ textAlign: "right", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Sales Amount</th>
+                <th style={{ textAlign: "right", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Stock</th>
+                <th style={{ textAlign: "right", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>Profit</th>
+                <th style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase", minWidth: 260 }}>Explanation / Score</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {filteredAnomalies.length === 0 ? (
+                <tr>
+                  <td colSpan={9} style={{ padding: "30px", textAlign: "center", color: C.textDim }}>
+                    {loading ? "Loading anomalies..." : "No anomaly records match the selected filter."}
+                  </td>
+                </tr>
+              ) : (
+                filteredAnomalies.map((row, idx) => {
+                  const score = row.anomaly_score ?? 0;
+                  const isHigh = score < -0.03;
+                  return (
+                    <tr
+                      key={row.transaction_id || idx}
+                      style={{
+                        borderBottom: `1px solid ${C.border}`,
+                        background: isHigh ? "rgba(200, 48, 48, 0.02)" : "transparent",
+                      }}
+                    >
+                      <td style={{ padding: "12px 10px", fontWeight: 700, color: C.text }}>
+                        {row.transaction_id || `TX-${idx + 1}`}
+                      </td>
+                      <td style={{ padding: "12px 10px", color: C.textMuted }}>
+                        {formatDate(row.sale_date)}
+                      </td>
+                      <td style={{ padding: "12px 10px", fontWeight: 600, color: C.text }}>
+                        {row.product_id || "-"}
+                      </td>
+                      <td style={{ padding: "12px 10px", color: C.textMuted }}>
+                        {row.branch_id || "-"}
+                      </td>
+                      <td style={{ padding: "12px 10px", textAlign: "right", fontWeight: 600 }}>
+                        {row.quantity_sold ?? row.quantity ?? 0}
+                      </td>
+                      <td style={{ padding: "12px 10px", textAlign: "right", fontWeight: 600, color: C.green }}>
+                        {formatCurrency(row.sales_amount ?? row.sales ?? 0)}
+                      </td>
+                      <td style={{ padding: "12px 10px", textAlign: "right", color: (row.current_stock ?? 0) <= (row.reorder_level ?? 0) ? C.danger : C.text }}>
+                        {row.current_stock ?? 0}
+                      </td>
+                      <td style={{ padding: "12px 10px", textAlign: "right", color: (row.profit ?? 0) < 0 ? C.danger : C.text }}>
+                        {formatCurrency(row.profit ?? 0)}
+                      </td>
+                      <td style={{ padding: "12px 10px" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span
+                              style={{
+                                background: isHigh ? C.dangerBg : C.warnBg,
+                                color: isHigh ? C.danger : C.warn,
+                                border: `1px solid ${isHigh ? "#f2bcbc" : "#ecdca2"}`,
+                                padding: "2px 8px",
+                                borderRadius: 12,
+                                fontSize: 10,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Score: {score.toFixed(4)}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.4 }}>
+                            {row.explanation || "Deviating multivariable feature values detected."}
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

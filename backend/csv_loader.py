@@ -4,6 +4,7 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,47 +14,37 @@ import models
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
+EXCEL_PATH = DATA_DIR / "Capstone_ERP_Cleaned_Final (1).xlsx"
 SALES_BATCH_SIZE = 5000
 SUPPLIER_SEED_PASSWORD = "supplier123"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def _clean_str(value):
-    if value is None:
+    if value is None or pd.isna(value):
         return None
     cleaned = str(value).strip()
     return cleaned or None
 
 
 def _as_int(value):
-    if value in (None, ""):
+    if value in (None, "") or pd.isna(value):
         return None
     return int(float(value))
 
 
 def _as_float(value):
-    if value in (None, ""):
+    if value in (None, "") or pd.isna(value):
         return None
     return float(value)
 
 
 def _as_bool(value):
-    if value in (None, ""):
+    if value in (None, "") or pd.isna(value):
         return None
     if isinstance(value, bool):
         return value
     return str(value).strip().lower() in {"1", "true", "yes", "y"}
-
-
-def _as_date(value):
-    if value in (None, ""):
-        return None
-    for fmt in ("%m/%d/%Y", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(value.strip(), fmt).date()
-        except ValueError:
-            continue
-    raise ValueError(f"Unsupported date format: {value}")
 
 
 def _state_code_for_location(location: str | None) -> str:
@@ -85,15 +76,257 @@ def _dummy_supplier_gstin(supplier: models.Supplier, index: int) -> str:
     return f"{state_code}{pan_block}{entity_code}Z{checksum}"
 
 
+def load_excel_tables(db: Session) -> None:
+    if not EXCEL_PATH.exists():
+        print(f"Excel workbook not found at {EXCEL_PATH}, skipping Excel sync.", flush=True)
+        return
+
+    # Check if database counts match Excel workbook (3650 sales, 10 products, 5 suppliers)
+    sale_count = db.query(models.Sale).count()
+    prod_count = db.query(models.Product).count()
+    supp_count = db.query(models.Supplier).count()
+
+    if sale_count == 3650 and prod_count == 10 and supp_count == 5:
+        # Check if inventory table is populated or suppliers rank is missing
+        supp_has_rank = db.query(models.Supplier).filter(models.Supplier.rank.isnot(None)).count()
+        if db.query(models.Inventory).count() == 0 or supp_has_rank == 0:
+            pass # proceed to full load
+        else:
+            print("Database already matches Excel workbook Capstone_ERP_Cleaned_Final (1).xlsx (3650 sales, 10 products, 5 suppliers).", flush=True)
+            return
+
+
+
+    print(f"Syncing database with Excel workbook {EXCEL_PATH.name}...", flush=True)
+
+    # Purge existing seed data to enforce exact Excel workbook dataset
+    db.query(models.Sale).delete()
+    db.query(models.Inventory).delete()
+    db.query(models.Product).delete()
+    db.query(models.Supplier).delete()
+    db.commit()
+
+
+    xl = pd.ExcelFile(EXCEL_PATH)
+
+    # 1. Load Suppliers and compute Weighted Scoring using the exact algorithm
+    df_sup = xl.parse("suppliers")
+    df_prod = xl.parse("products")
+
+    # Calculate average product cost for each supplier
+    supplier_cost = (
+        df_prod
+        .groupby("supplier_id")["cost_price"]
+        .mean()
+        .reset_index()
+    )
+    supplier_cost.rename(columns={"cost_price": "average_cost"}, inplace=True)
+
+    # Combine supplier and product information
+    supplier_data = df_sup.merge(supplier_cost, on="supplier_id", how="left")
+
+    # Numeric conversion & missing value handling
+    numeric_columns = ["average_cost", "quality_score", "lead_time_days", "reliability_score"]
+    for column in numeric_columns:
+        if column in supplier_data.columns:
+            supplier_data[column] = pd.to_numeric(supplier_data[column], errors="coerce")
+            if supplier_data[column].isna().sum() > 0:
+                supplier_data[column] = supplier_data[column].fillna(supplier_data[column].median())
+
+    def lower_is_better(column):
+        minimum = column.min()
+        maximum = column.max()
+        if maximum == minimum:
+            return pd.Series(100, index=column.index)
+        return ((maximum - column) / (maximum - minimum)) * 100
+
+    def higher_is_better(column):
+        minimum = column.min()
+        maximum = column.max()
+        if maximum == minimum:
+            return pd.Series(100, index=column.index)
+        return ((column - minimum) / (maximum - minimum)) * 100
+
+    supplier_data["cost_score"] = lower_is_better(supplier_data["average_cost"])
+    supplier_data["quality_score_normalized"] = higher_is_better(supplier_data["quality_score"])
+    supplier_data["delivery_score"] = lower_is_better(supplier_data["lead_time_days"])
+    supplier_data["reliability_score_normalized"] = higher_is_better(supplier_data["reliability_score"])
+
+    cost_weight = 0.30
+    quality_weight = 0.30
+    delivery_weight = 0.20
+    reliability_weight = 0.20
+
+    supplier_data["weighted_score"] = (
+        supplier_data["cost_score"] * cost_weight
+        + supplier_data["quality_score_normalized"] * quality_weight
+        + supplier_data["delivery_score"] * delivery_weight
+        + supplier_data["reliability_score_normalized"] * reliability_weight
+    )
+
+    supplier_data["rank"] = (
+        supplier_data["weighted_score"]
+        .rank(ascending=False, method="min")
+        .astype(int)
+    )
+
+    supplier_mappings = []
+    for _, r in supplier_data.iterrows():
+        code = _clean_str(r.get("supplier_id"))
+        s_name = _clean_str(r.get("supplier_name"))
+        rel_score = _as_float(r.get("reliability_score")) or 90.0
+        risk_score = max(1, min(5, int((100 - rel_score) / 4)))
+        supplier_mappings.append(
+            {
+                "supplier_code": code,
+                "supplier_name": s_name,
+                "name": s_name or code or "Supplier",
+                "location": _clean_str(r.get("location")),
+                "rating": _as_float(r.get("rating")),
+                "lead_time": _as_int(r.get("lead_time_days")),
+                "contact_number": _clean_str(r.get("contact_number")),
+                "supply_risk_score": risk_score,
+                "on_time_delivery_rate": _as_float(r.get("on_time_delivery_rate")),
+                "quality_score": _as_float(r.get("quality_score")),
+                "reliability_score": rel_score,
+                "average_cost": _as_float(r.get("average_cost")),
+                "weighted_score": _as_float(r.get("weighted_score")),
+                "rank": _as_int(r.get("rank")),
+            }
+        )
+    if supplier_mappings:
+        db.bulk_insert_mappings(models.Supplier, supplier_mappings)
+        db.commit()
+
+
+    # 2. Load Products
+    df_prod = xl.parse("products")
+    product_mappings = []
+    for _, r in df_prod.iterrows():
+        p_code = _clean_str(r.get("product_id"))
+        p_name = _clean_str(r.get("product_name"))
+        product_mappings.append(
+            {
+                "product_code": p_code,
+                "name": p_name or p_code or "Product",
+                "category": _clean_str(r.get("category")),
+                "price": _as_float(r.get("price")),
+                "cost_price": _as_float(r.get("cost_price")),
+                "supplier_code": _clean_str(r.get("supplier_id")),
+            }
+        )
+    if product_mappings:
+        db.bulk_insert_mappings(models.Product, product_mappings)
+        db.commit()
+
+    # 3. Update stock levels from supplier_stock sheet
+    if "supplier_stock" in xl.sheet_names:
+        df_stock = xl.parse("supplier_stock")
+        prod_map = {p.product_code: p for p in db.query(models.Product).all()}
+        supp_map = {s.supplier_code: s for s in db.query(models.Supplier).all()}
+        for _, r in df_stock.iterrows():
+            p_code = _clean_str(r.get("product_id"))
+            s_code = _clean_str(r.get("supplier_id"))
+            stock = _as_int(r.get("supplier_stock"))
+            reorder = _as_int(r.get("reorder_level"))
+            status = _clean_str(r.get("stock_status"))
+            util = _as_int(r.get("stock_utilization_rate"))
+            risk = _as_int(r.get("supply_risk_score"))
+
+            if p_code and p_code in prod_map:
+                prod = prod_map[p_code]
+                prod.supplier_stock = stock
+                prod.reorder_level = reorder
+                prod.stock_status = status
+                prod.stock_utilization_rate = util
+                if risk is not None:
+                    prod.supply_risk_score = risk
+
+            if s_code and s_code in supp_map:
+                supp = supp_map[s_code]
+                if stock is not None:
+                    supp.supplier_stock = stock
+                if reorder is not None:
+                    supp.reorder_level = reorder
+                if status:
+                    supp.stock_status = status
+                if risk is not None:
+                    supp.supply_risk_score = risk
+        db.commit()
+
+    # 4. Load Sales (Transactions)
+    df_tx = xl.parse("Transactions") if "Transactions" in xl.sheet_names else xl.parse("retail_sales")
+    prod_id_map = {p.product_code: p.id for p in db.query(models.Product).all()}
+    sales_mappings = []
+
+    for _, r in df_tx.iterrows():
+        s_date = pd.to_datetime(r.get("sale_date")).date() if pd.notna(r.get("sale_date")) else None
+        p_code = _clean_str(r.get("product_id"))
+        qty = _as_int(r.get("quantity_sold")) or 0
+        rev = _as_float(r.get("sales_amount") or r.get("revenue"))
+        cost = _as_float(r.get("cost_price"))
+        tot_cost = _as_float(r.get("total_cost"))
+        profit = _as_float(r.get("profit"))
+
+        sales_mappings.append(
+            {
+                "product_id": prod_id_map.get(p_code),
+                "quantity": qty,
+                "date": s_date or datetime.utcnow().date(),
+                "sale_date": s_date,
+                "branch_id": _clean_str(r.get("branch_id")),
+                "product_code": p_code,
+                "quantity_sold": qty,
+                "price": _as_float(r.get("price")),
+                "promo": _as_bool(r.get("promo")),
+                "weekday": _as_int(r.get("weekday")),
+                "month": _as_int(r.get("month")),
+                "revenue": rev,
+                "cost_price": cost,
+                "total_cost": tot_cost,
+                "profit": profit,
+                "lag_1": _as_int(r.get("lag_1")),
+                "lag_7": _as_int(r.get("lag_7")),
+                "is_weekend": _as_bool(r.get("is_weekend")),
+            }
+        )
+
+    if sales_mappings:
+        db.bulk_insert_mappings(models.Sale, sales_mappings)
+        db.commit()
+
+    # 5. Load inventory_seed.csv.xlsx into models.Inventory
+    seed_inv_path = DATA_DIR / "inventory_seed.csv.xlsx"
+    if seed_inv_path.exists():
+        db.query(models.Inventory).delete()
+        db.commit()
+        xl_seed = pd.ExcelFile(seed_inv_path)
+        df_seed = xl_seed.parse("inventory_seed")
+        prod_code_map = {p.product_code: p.id for p in db.query(models.Product).all()}
+        inv_rows = []
+        for _, r in df_seed.iterrows():
+            p_code = _clean_str(r.get("product_id"))
+            p_id = prod_code_map.get(p_code)
+            if p_id:
+                inv_rows.append(
+                    models.Inventory(
+                        product_id=p_id,
+                        stock=_as_int(r.get("stock")),
+                        reorder_level=_as_int(r.get("reorder_level")),
+                    )
+                )
+        if inv_rows:
+            db.bulk_save_objects(inv_rows)
+            db.commit()
+            print(f"Loaded {len(inv_rows)} inventory seed records into database.", flush=True)
+
+    print(f"Excel sync complete. Loaded {len(sales_mappings)} sales rows, {len(product_mappings)} products, {len(supplier_mappings)} suppliers.", flush=True)
+
+
+
 def load_csv_tables(db: Session) -> None:
-    print("Loading suppliers from CSV...", flush=True)
-    load_suppliers(db)
-    print("Syncing supplier login users...", flush=True)
+    load_excel_tables(db)
     sync_supplier_users(db)
-    print("Loading products from CSV...", flush=True)
-    load_products(db)
-    print("Loading retail sales from CSV...", flush=True)
-    load_sales(db)
 
 
 def verify_loaded_data(db: Session) -> dict[str, int]:
@@ -151,165 +384,3 @@ def sync_supplier_users(db: Session) -> None:
     if new_rows:
         db.bulk_insert_mappings(models.User, new_rows)
     db.commit()
-
-
-def load_suppliers(db: Session) -> None:
-    path = DATA_DIR / "suppliers.csv"
-    if not path.exists():
-        path = DATA_DIR / "supplier.csv"
-    if not path.exists():
-        return
-
-    existing_suppliers = {
-        supplier.supplier_code: supplier
-        for supplier in db.query(models.Supplier).all()
-        if supplier.supplier_code
-    }
-    new_rows = []
-
-    with path.open("r", newline="", encoding="utf-8-sig") as file:
-        rows = csv.DictReader(file)
-        for row in rows:
-            supplier_code = _clean_str(row.get("supplier_id"))
-            supplier_name = _clean_str(row.get("supplier_name"))
-            supplier_payload = {
-                "name": supplier_name or supplier_code or "Unknown",
-                "location": _clean_str(row.get("location")),
-                "rating": _as_float(row.get("rating")),
-                "lead_time": _as_int(row.get("lead_time_days")),
-                "supplier_code": supplier_code,
-                "supplier_name": supplier_name,
-                "contact_number": _clean_str(row.get("contact_number")),
-                "product_code": _clean_str(row.get("product_id")),
-                "branch_id": _clean_str(row.get("branch_id")),
-                "supplier_stock": _as_int(row.get("supplier_stock")),
-                "reorder_level": _as_int(row.get("reorder_level")),
-                "stock_status": _clean_str(row.get("stock_status")),
-                "stock_utilization_rate": _as_int(row.get("stock_utilization_rate")),
-                "supply_risk_score": _as_int(row.get("supplier_risk_score") or row.get("supply_risk_score")),
-            }
-
-            existing_supplier = existing_suppliers.get(supplier_code)
-            if existing_supplier:
-                for field, value in supplier_payload.items():
-                    setattr(existing_supplier, field, value)
-                continue
-
-            new_rows.append(supplier_payload)
-            if supplier_code:
-                existing_suppliers[supplier_code] = True
-
-    if new_rows:
-        db.bulk_insert_mappings(models.Supplier, new_rows)
-    db.commit()
-
-
-def load_products(db: Session) -> None:
-    path = DATA_DIR / "products.csv"
-    if not path.exists():
-        return
-
-    existing_codes = {
-        code
-        for code in db.scalars(select(models.Product.product_code)).all()
-        if code
-    }
-    new_rows = []
-
-    with path.open("r", newline="", encoding="utf-8-sig") as file:
-        rows = csv.DictReader(file)
-        for row in rows:
-            product_code = row.get("product_id", "").strip() or None
-            if product_code and product_code in existing_codes:
-                continue
-
-            new_rows.append(
-                {
-                    "name": (row.get("supplier_name") or product_code or "Unknown").strip(),
-                    "category": row.get("location") or None,
-                    "price": _as_float(row.get("supplier_stock")),
-                    "cost_price": _as_float(row.get("reorder_level")),
-                    "supplier_code": row.get("supplier_id") or None,
-                    "supplier_name": row.get("supplier_name") or None,
-                    "product_code": product_code,
-                    "location": row.get("location") or None,
-                    "contact_number": row.get("contact_number") or None,
-                    "branch_id": row.get("branch_id") or None,
-                    "supplier_stock": _as_int(row.get("supplier_stock")),
-                    "reorder_level": _as_int(row.get("reorder_level")),
-                    "stock_status": row.get("stock_status") or None,
-                    "stock_utilization_rate": _as_int(row.get("stock_utilization_rate")),
-                    "supply_risk_score": _as_int(row.get("supply_risk_score")),
-                }
-            )
-            if product_code:
-                existing_codes.add(product_code)
-
-    if new_rows:
-        db.bulk_insert_mappings(models.Product, new_rows)
-        db.commit()
-
-
-def load_sales(db: Session) -> None:
-    path = DATA_DIR / "retail_sales.csv"
-    if not path.exists():
-        return
-
-    product_lookup = dict(
-        db.execute(select(models.Product.product_code, models.Product.id)).all()
-    )
-    existing_keys = set(
-        db.execute(
-            select(models.Sale.sale_date, models.Sale.product_code, models.Sale.branch_id)
-        ).all()
-    )
-    rows_to_insert = []
-    inserted = 0
-
-    with path.open("r", newline="", encoding="utf-8-sig") as file:
-        rows = csv.DictReader(file)
-        for row in rows:
-            sale_date = _as_date(row.get("sale_date"))
-            product_code = row.get("product_id", "").strip() or None
-            branch_id = row.get("branch_id") or None
-            sale_key = (sale_date, product_code, branch_id)
-
-            if sale_key in existing_keys:
-                continue
-
-            rows_to_insert.append(
-                {
-                    "product_id": product_lookup.get(product_code),
-                    "quantity": _as_int(row.get("quantity_sold")) or 0,
-                    "date": sale_date or datetime.utcnow().date(),
-                    "sale_date": sale_date,
-                    "branch_id": branch_id,
-                    "product_code": product_code,
-                    "quantity_sold": _as_int(row.get("quantity_sold")),
-                    "price": _as_float(row.get("price")),
-                    "promo": _as_bool(row.get("promo")),
-                    "weekday": _as_int(row.get("weekday")),
-                    "month": _as_int(row.get("month")),
-                    "revenue": _as_float(row.get("revenue")),
-                    "cost_price": _as_float(row.get("cost_price")),
-                    "total_cost": _as_float(row.get("total_cost")),
-                    "profit": _as_float(row.get("profit")),
-                    "lag_1": _as_int(row.get("lag_1")),
-                    "lag_7": _as_int(row.get("lag_7")),
-                    "is_weekend": _as_bool(row.get("is_weekend")),
-                }
-            )
-            existing_keys.add(sale_key)
-
-            if len(rows_to_insert) >= SALES_BATCH_SIZE:
-                db.bulk_insert_mappings(models.Sale, rows_to_insert)
-                db.commit()
-                inserted += len(rows_to_insert)
-                print(f"Loaded {inserted} sales rows...", flush=True)
-                rows_to_insert.clear()
-
-    if rows_to_insert:
-        db.bulk_insert_mappings(models.Sale, rows_to_insert)
-        db.commit()
-        inserted += len(rows_to_insert)
-        print(f"Loaded {inserted} sales rows.", flush=True)

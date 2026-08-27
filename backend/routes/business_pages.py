@@ -222,11 +222,17 @@ def suppliers_overview(db: Session = Depends(get_db)):
     suppliers = (
         db.query(models.Supplier)
         .filter(models.Supplier.supplier_code.isnot(None))
-        .order_by(desc(models.Supplier.rating), models.Supplier.lead_time.asc())
+        .order_by(models.Supplier.rank.asc().nulls_last(), desc(models.Supplier.rating))
         .all()
     )
 
-    def supplier_card(supplier, rank=None, badge=None):
+    def supplier_card(supplier, index_rank=None, badge=None):
+        calc_rank = supplier.rank or index_rank
+        w_score = round(float(supplier.weighted_score or 0), 1)
+        q_score = round(float(supplier.quality_score or 0), 1)
+        ot_rate = round(float(supplier.on_time_delivery_rate or 0), 1)
+        avg_c = round(float(supplier.average_cost or 0), 2)
+
         return {
             "id": supplier.id,
             "name": supplier.supplier_name or supplier.name,
@@ -237,30 +243,34 @@ def suppliers_overview(db: Session = Depends(get_db)):
             "since": supplier.branch_id or "Imported",
             "tags": [value for value in [supplier.product_code, supplier.contact_number, supplier.stock_status] if value] or ["No tags"],
             "leadTime": f"{supplier.lead_time or 0} days",
-            "fillRate": f"{max(0, 100 - (supplier.supply_risk_score or 0) * 10)}%",
-            "onTime": f"{max(0, 100 - (supplier.lead_time or 0) * 5)}%",
+            "fillRate": f"{ot_rate}%" if ot_rate else f"{max(0, 100 - (supplier.supply_risk_score or 0) * 10)}%",
+            "onTime": f"{ot_rate}%" if ot_rate else f"{max(0, 100 - (supplier.lead_time or 0) * 5)}%",
             "contact": supplier.contact_number or "No contact info",
             "phone": supplier.contact_number or "No phone",
             "location": supplier.location or "No location",
-            "desc": f"Supplier stock: {supplier.supplier_stock or 0} units - Risk score {supplier.supply_risk_score or 0}",
-            "rank": rank,
-            "badge": badge,
+            "desc": f"Weighted Score: {w_score}/100 | Rank #{calc_rank} | Avg Cost: ₹{avg_c} | Quality: {q_score}",
+            "rank": calc_rank,
+            "badge": badge or (f"Rank #{calc_rank}" if calc_rank else None),
+            "weightedScore": w_score,
+            "averageCost": avg_c,
+            "qualityScore": q_score,
         }
 
     my_suppliers = [supplier_card(supplier) for supplier in suppliers[:3]]
     recommended = []
-    for index, supplier in enumerate(suppliers[3:12], start=1):
-        badge = "Top Rated" if index == 1 else "Highly Rated" if index <= 3 else None
-        recommended.append(supplier_card(supplier, rank=index, badge=badge))
+    for index, supplier in enumerate(suppliers[3:12], start=4):
+        badge = f"Rank #{supplier.rank or index}"
+        recommended.append(supplier_card(supplier, index_rank=index, badge=badge))
 
     categories = ["All"] + sorted({supplier["category"] for supplier in my_suppliers + recommended})
 
     return {
-        "headerNote": "Your partners & recommended suppliers - Ranked from database",
+        "headerNote": "Partners & recommended suppliers — Ranked via Weighted Scoring Algorithm",
         "mySuppliers": my_suppliers,
         "recommended": recommended,
         "categories": categories,
     }
+
 
 
 @router.get("/analytics")

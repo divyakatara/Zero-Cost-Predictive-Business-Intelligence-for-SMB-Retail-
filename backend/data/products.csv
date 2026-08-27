@@ -1,11 +1,6 @@
-supplier_id,supplier_name,location,rating,lead_time_days,contact_number,product_id,branch_id,supplier_stock,reorder_level,stock_status,stock_utilization_rate,supply_risk_score
-supplier_1,Supplier_supplier_1,Bangalore,4.5,3,9876543211,item_1,store_1,3923,392,Healthy,83.3,1
-supplier_2,Supplier_supplier_2,Chennai,4.2,5,9876543212,item_2,store_1,2767,277,Healthy,83.3,1
-supplier_3,Supplier_supplier_3,Mumbai,3.8,7,9876543213,item_3,store_1,2569,257,Healthy,83.3,1
-supplier_1,Supplier_supplier_1,Bangalore,4.5,3,9876543211,item_4,store_1,1214,121,Healthy,83.4,1
-supplier_2,Supplier_supplier_2,Chennai,4.2,5,9876543212,item_5,store_1,4680,468,Healthy,83.3,1
-supplier_3,Supplier_supplier_3,Mumbai,3.8,7,9876543213,item_6,store_1,1105,111,Healthy,83.3,1
-supplier_1,Supplier_supplier_1,Bangalore,4.5,3,9876543211,item_7,store_1,4828,483,Healthy,83.3,1
-supplier_2,Supplier_supplier_2,Chennai,4.2,5,9876543212,item_8,store_1,2546,255,Healthy,83.3,1
-supplier_3,Supplier_supplier_3,Mumbai,3.8,7,9876543213,item_9,store_1,2507,251,Healthy,83.3,1
-supplier_1,Supplier_supplier_1,Bangalore,4.5,3,9876543211,item_10,store_1,1568,157,Healthy,83.3,1
+﻿supplier_id,supplier_name,location,rating,lead_time_days,contact_number,product_id,branch_id,supplier_stock,reorder_level,stock_status,stock_utilization_rate,supply_risk_score
+supplier_1,supplier_001,Bangalore,4.5,3,1234567890,item_1, store_1,4714,188,OK,49,3
+supplier_2,supplier_002,Chennai,4.2,5,1234567890,item_2, store_2,1417,170,OK,62,2
+supplier_3,supplier_003,Mumbai,3.8,7,1234567890,item_3, store_3,2366,158,OK,49,2
+supplier_4,supplier_004,Hyderabad,4.7,4,1234567890,item_4, store_4,1470,102,OK,40,1
+supplier_5,supplier_005,Delhi,4,6,1234567890,item_5, store_5,1254,200,OK,56,3

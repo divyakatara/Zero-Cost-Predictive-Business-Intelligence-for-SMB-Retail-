@@ -104,3 +104,24 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
         "message": "Login successful",
         "user": serialize_user(db_user),
     }
+
+
+@router.post("/admin-login")
+def admin_login(user: schemas.UserLogin):
+    """Authenticate administrator using secure environment variables."""
+    import os
+    env_admin_email = os.getenv("ADMIN_EMAIL", "admin@smarterp.com").strip().lower()
+    env_admin_password = os.getenv("ADMIN_PASSWORD", "admin123").strip()
+
+    if user.email.strip().lower() == env_admin_email and user.password == env_admin_password:
+        return {
+            "message": "Admin login successful",
+            "user": {
+                "id": 0,
+                "name": "System Administrator",
+                "email": env_admin_email,
+                "role": "admin",
+            },
+        }
+
+    raise HTTPException(status_code=401, detail="Invalid admin credentials")

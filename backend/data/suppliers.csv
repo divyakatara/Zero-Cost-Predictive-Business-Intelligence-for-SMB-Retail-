@@ -1,6 +1,16 @@
-supplier_id,supplier_name,location,rating,lead_time_days,contact_number,product_id,branch_id,supplier_stock,reorder_level,stock_status,stock_utilization_rate,supply_risk_score
-supplier_1,Supplier_supplier_1,Bangalore,4.5,3,9876543211,item_1,store_1,3923,392,Healthy,83.3,1
-supplier_2,Supplier_supplier_2,Chennai,4.2,5,9876543212,item_2,store_1,2767,277,Healthy,83.3,1
-supplier_3,Supplier_supplier_3,Mumbai,3.8,7,9876543213,item_3,store_1,2569,257,Healthy,83.3,1
-supplier_4,Supplier_supplier_4,Hyderabad,4.7,4,9876543214,,,,,,,
-supplier_5,Supplier_supplier_5,Delhi,4,6,9876543215,,,,,,,
+supplier_id,supplier_name,location,rating,lead_time_days,contact_number,product_id,branch_id,supplier_stock,reorder_level,stock_status,stock_utilization_rate,supplier_risk_score
+supplier_1,ABC Traders,Chennai,4.6,5,9876543210,item_1,store_1,3200,150,OK,82,1
+supplier_2,Global Supply Co,Bangalore,4.2,7,9876543211,item_2,store_2,1800,200,LOW,91,2
+supplier_3,Prime Goods,Mumbai,3.9,9,9876543212,item_3,store_3,900,180,CRITICAL,95,3
+supplier_4,Metro Wholesale,Hyderabad,4.7,4,9876543213,item_4,store_4,4100,190,OK,74,1
+supplier_5,Nova Essentials,Delhi,4.1,6,9876543214,item_5,store_5,1450,175,LOW,88,2
+supplier_6,Southline Distributors,Coimbatore,4.4,5,9876543215,item_6,store_1,2950,160,OK,79,1
+supplier_7,Urban Source,Pune,3.8,8,9876543216,item_7,store_2,1125,170,LOW,90,3
+supplier_8,BlueCart Supply,Kolkata,4.3,6,9876543217,item_8,store_3,2600,155,OK,68,2
+supplier_9,Harbor Merchants,Kochi,4.0,7,9876543218,item_9,store_4,980,140,CRITICAL,93,4
+supplier_10,Reliance Provisions,Ahmedabad,4.5,5,9876543219,item_10,store_5,3500,210,OK,71,1
+supplier_11,Western Grid Supply,Jaipur,4.1,6,9876543220,item_11,store_1,2050,185,OK,66,2
+supplier_12,Peak Retail Partners,Indore,3.7,10,9876543221,item_12,store_2,860,165,CRITICAL,96,4
+supplier_13,FreshFlow Traders,Lucknow,4.4,4,9876543222,item_13,store_3,2875,150,OK,64,1
+supplier_14,EastGate Commerce,Bhubaneswar,4.0,8,9876543223,item_14,store_4,1320,175,LOW,89,3
+supplier_15,Capital Allied Supply,Nagpur,4.6,5,9876543224,item_15,store_5,3760,220,OK,72,1

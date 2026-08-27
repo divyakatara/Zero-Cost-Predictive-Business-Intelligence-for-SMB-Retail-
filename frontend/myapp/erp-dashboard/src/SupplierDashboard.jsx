@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 import SupplierInventoryPage from './SInventoryPage';
 import SalesPage from './SSalesPage';
 import BusinessMarketplacePage from './SBusinessMarketplace';
@@ -47,22 +48,41 @@ const navItems = [
   { id: "settings",             label: "Settings",             icon: "◍" },
 ];
 
-const requirements = [
-  { product: "Item 1", stock: "No data", reorder: 0, status: "low"      },
-  { product: "Item 2", stock: "No data", reorder: 0, status: "critical" },
-  { product: "Item 3", stock: "No data", reorder: 0, status: "critical" },
-  { product: "Item 4", stock: "No data", reorder: 0, status: "low"      },
-];
-
-
-
 const statusStyle = {
+  ok:       { bg: "#eef6ee", color: "#3a7a3a", dot: "#3a7a3a", label: "Healthy"  },
   low:      { bg: "#fdf8e8", color: "#8a7020", dot: "#c8a030", label: "Low"      },
   critical: { bg: "#fdf0f0", color: "#8a2020", dot: "#c83030", label: "Critical" },
 };
 
 export default function SupplierDashboard({ user }) {
   const [activeNav, setActiveNav] = useState("dashboard");
+  const [requirements, setRequirements] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+    async function loadData() {
+      try {
+        const response = await fetchJson("/business-pages/inventory");
+        if (!ignore && response?.items) {
+          const mapped = response.items.map(item => ({
+            product: item.name || item.id,
+            stock: item.qty != null ? item.qty.toLocaleString() : "No data",
+            reorder: item.reorder || 0,
+            status: item.status === "critical" ? "critical" : item.status === "low" ? "low" : "ok",
+          }));
+          setRequirements(mapped);
+        }
+      } catch {
+        /* keep default empty list on network error */
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+    loadData();
+    return () => { ignore = true; };
+  }, []);
+
 
   return (
     <div style={{ ...ibm, background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>

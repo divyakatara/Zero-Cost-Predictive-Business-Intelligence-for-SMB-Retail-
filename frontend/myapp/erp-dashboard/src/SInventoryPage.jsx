@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -25,23 +26,6 @@ const C = {
 
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm  = { fontFamily: "'IBM Plex Sans', sans-serif" };
-
-const suppliers = [
-  { name: "Supplier A", cat: "Category —", grade: "—", score: 0, items: 0, trend: "flat", tl: "No data",
-    metrics: [{ l: "On-Time Delivery", v: 0, d: "0%" }, { l: "Quality Rating", v: 0, d: "0/5" }, { l: "Fill Rate", v: 0, d: "0%" }, { l: "Price Consistency", v: 0, d: "0%" }] },
-  { name: "Supplier B", cat: "Category —", grade: "—", score: 0, items: 0, trend: "flat", tl: "No data",
-    metrics: [{ l: "On-Time Delivery", v: 0, d: "0%" }, { l: "Quality Rating", v: 0, d: "0/5" }, { l: "Fill Rate", v: 0, d: "0%" }, { l: "Price Consistency", v: 0, d: "0%" }] },
-  { name: "Supplier C", cat: "Category —", grade: "—", score: 0, items: 0, trend: "flat", tl: "No data",
-    metrics: [{ l: "On-Time Delivery", v: 0, d: "0%" }, { l: "Quality Rating", v: 0, d: "0/5" }, { l: "Fill Rate", v: 0, d: "0%" }, { l: "Price Consistency", v: 0, d: "0%" }] },
-];
-
-const invData = [
-  { id: "SKU-001", name: "Item 1", cat: "—", qty: 0, cap: 0, ro: 0, st: "ok", sup: "—", rt: "—", ld: 0, lok: true,  u: "units" },
-  { id: "SKU-002", name: "Item 2", cat: "—", qty: 0, cap: 0, ro: 0, st: "ok", sup: "—", rt: "—", ld: 0, lok: true,  u: "units" },
-  { id: "SKU-003", name: "Item 3", cat: "—", qty: 0, cap: 0, ro: 0, st: "ok", sup: "—", rt: "—", ld: 0, lok: true,  u: "units" },
-  { id: "SKU-004", name: "Item 4", cat: "—", qty: 0, cap: 0, ro: 0, st: "ok", sup: "—", rt: "—", ld: 0, lok: true,  u: "units" },
-  { id: "SKU-005", name: "Item 5", cat: "—", qty: 0, cap: 0, ro: 0, st: "ok", sup: "—", rt: "—", ld: 0, lok: true,  u: "units" },
-];
 
 const risks = [
   { icon: "◬", name: "Supplier A", desc: "No data yet", lvl: "low" },
@@ -77,6 +61,60 @@ const trendColor  = t => t === "up" ? C.green : t === "down" ? "#c83030" : C.tex
 export default function SupplierInventoryPage() {
   const [activeFilter, setActiveFilter] = useState("All");
   const [search,       setSearch]       = useState("");
+  const [invData,      setInvData]      = useState([]);
+  const [suppliers,    setSuppliers]    = useState([]);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadData() {
+      try {
+        const invRes = await fetchJson("/business-pages/inventory");
+        if (!ignore && invRes?.items) {
+          const mapped = invRes.items.map((item, idx) => ({
+            id: item.id || `SKU-${idx + 1}`,
+            name: item.name,
+            cat: item.category || "General",
+            qty: item.qty || 0,
+            cap: (item.reorder || 0) * 10 || 1000,
+            ro: item.reorder || 0,
+            st: item.status === "critical" ? "ct" : item.status === "low" ? "lw" : "ok",
+            sup: item.supplier || "—",
+            rt: "98%",
+            ld: 3,
+            lok: true,
+            u: "units",
+          }));
+          setInvData(mapped);
+        }
+
+        const suppRes = await fetchJson("/business-pages/suppliers");
+        if (!ignore && suppRes?.mySuppliers) {
+          const mappedSupp = suppRes.mySuppliers.map(s => ({
+            name: s.name,
+            cat: s.category,
+            grade: s.badge || "Ranked",
+            score: s.weightedScore || s.rating * 20,
+            items: 10,
+            trend: "up",
+            tl: s.leadTime,
+            metrics: [
+              { l: "On-Time Delivery", v: parseInt(s.onTime) || 95, d: s.onTime || "95%" },
+              { l: "Quality Rating", v: Math.round(s.rating * 20) || 90, d: `${s.rating}/5` },
+              { l: "Fill Rate", v: parseInt(s.fillRate) || 90, d: s.fillRate || "90%" },
+              { l: "Weighted Score", v: Math.round(s.weightedScore) || 85, d: `${s.weightedScore}/100` },
+            ],
+          }));
+          setSuppliers(mappedSupp);
+        }
+      } catch {
+        /* ignore fallback */
+      }
+    }
+
+    loadData();
+    return () => { ignore = true; };
+  }, []);
 
   const filtered = invData.filter(i => {
     const q      = search.toLowerCase();

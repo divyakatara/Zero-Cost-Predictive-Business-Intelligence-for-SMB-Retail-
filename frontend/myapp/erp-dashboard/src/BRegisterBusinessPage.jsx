@@ -116,12 +116,21 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
 
     setFileError("");
     setGstCertificateFile(file);
-    setForm((f) => ({ ...f, gstCertificateName: file.name }));
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setForm((f) => ({
+        ...f,
+        gstCertificateName: file.name,
+        gstCertificateData: reader.result,
+      }));
+    };
+    reader.readAsDataURL(file);
   };
 
   const removeFile = () => {
     setGstCertificateFile(null);
-    setForm((f) => ({ ...f, gstCertificateName: "" }));
+    setForm((f) => ({ ...f, gstCertificateName: "", gstCertificateData: null }));
     setFileError("");
   };
 
