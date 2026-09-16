@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import LoginPage from "./LoginPage";
 import BRegisterBusinessPage from "./BRegisterBusinessPage";
 import AdminApprovalPage from "./AdminApprovalPage";
@@ -8,27 +8,27 @@ import { getBusinessByEmail, submitBusiness, subscribeBusinessChanges } from "./
 
 export default function App() {
   const [user, setUser] = useState(null);
-  const [needsBusinessDetails, setNeedsBusinessDetails] = useState(false);
+  // "idle" | "needs-register" | "has-record"
+  const [bizState, setBizState] = useState("idle");
   const [businessRecord, setBusinessRecord] = useState(null);
 
-  // Sync business record whenever user changes or local storage updates
-  useEffect(() => {
-    if (user && user.role === "business") {
-      const rec = getBusinessByEmail(user.email);
-      setBusinessRecord(rec);
-    }
-  }, [user]);
+  // Keep business record in sync with cross-tab changes
+  const syncBusiness = useCallback((email) => {
+    if (!email) return null;
+    const rec = getBusinessByEmail(email);
+    setBusinessRecord(rec || null);
+    return rec;
+  }, []);
 
   // Real-time subscription for cross-tab approvals
   useEffect(() => {
     const unsubscribe = subscribeBusinessChanges(() => {
-      if (user && user.role === "business") {
-        const updated = getBusinessByEmail(user.email);
-        setBusinessRecord(updated);
+      if (user?.role === "business") {
+        syncBusiness(user.email);
       }
     });
     return () => unsubscribe();
-  }, [user]);
+  }, [user, syncBusiness]);
 
   // Dev query parameter shortcut
   const isAdminRoute = new URLSearchParams(window.location.search).get("admin") === "1";
@@ -36,27 +36,40 @@ export default function App() {
 
   function handleLogin(userData) {
     setUser(userData);
+
     if (userData.role === "business") {
       const existing = getBusinessByEmail(userData.email);
-      if (!existing || userData.mode === "register") {
-        setNeedsBusinessDetails(true);
-      } else {
+
+      if (userData.mode === "register") {
+        // Always show registration form for new registrations
+        setBusinessRecord(null);
+        setBizState("needs-register");
+      } else if (existing) {
+        // Returning user with existing record → go straight to dashboard
         setBusinessRecord(existing);
+        setBizState("has-record");
+      } else {
+        // Logged in but no business record yet → show registration
+        setBusinessRecord(null);
+        setBizState("needs-register");
       }
     }
   }
 
   function handleBusinessDetailsSubmit(businessData) {
+    if (!user) return;
     const record = submitBusiness(user.email, businessData);
     setBusinessRecord(record);
-    setNeedsBusinessDetails(false);
+    setBizState("has-record");
   }
 
   function handleLogout() {
     setUser(null);
-    setNeedsBusinessDetails(false);
+    setBizState("idle");
     setBusinessRecord(null);
   }
+
+  // ── Routing ──────────────────────────────────────────────
 
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
@@ -65,7 +78,7 @@ export default function App() {
   }
 
   if (user.role === "business") {
-    if (needsBusinessDetails || !businessRecord) {
+    if (bizState === "needs-register") {
       return (
         <BRegisterBusinessPage
           user={user}
@@ -75,10 +88,21 @@ export default function App() {
       );
     }
 
+    if (bizState === "has-record" && businessRecord) {
+      return (
+        <BusinessDashboard
+          business={businessRecord}
+          onLogout={handleLogout}
+        />
+      );
+    }
+
+    // Fallback: still loading or unknown state → show registration
     return (
-      <BusinessDashboard
-        business={businessRecord}
-        onLogout={handleLogout}
+      <BRegisterBusinessPage
+        user={user}
+        onSubmit={handleBusinessDetailsSubmit}
+        onBack={handleLogout}
       />
     );
   }

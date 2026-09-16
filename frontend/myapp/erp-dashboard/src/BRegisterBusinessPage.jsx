@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -72,8 +72,9 @@ const inputStyle = (hasError) => ({
 
 export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
   const [step, setStep] = useState(0);
-  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
+  const topRef = useRef(null);
   const [form, setForm] = useState({
     businessName: "",
     businessType: "",
@@ -149,28 +150,38 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
     const req = requiredByStep[step];
     const newErrors = {};
     req.forEach((k) => {
-      if (!form[k] || !form[k].trim()) newErrors[k] = "This field is required";
+      if (!String(form[k] ?? "").trim()) newErrors[k] = "This field is required";
     });
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) {
+    if (step === 1 && form.email && !/^\S+@\S+\.\S+$/.test(form.email)) {
       newErrors.email = "Enter a valid email address";
     }
-    if (form.pincode && !/^\d{4,8}$/.test(form.pincode)) {
+    if (step === 1 && form.pincode && !/^\d{4,8}$/.test(form.pincode)) {
       newErrors.pincode = "Enter a valid postal code";
     }
     setErrors(newErrors);
+    if (Object.keys(newErrors).length > 0) {
+      // Scroll to top of form so user sees error banner
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     return Object.keys(newErrors).length === 0;
   };
 
   const handleNext = () => {
     if (!validateStep()) return;
     if (step < steps.length - 1) {
+      setErrors({});
       setStep(step + 1);
+      // Scroll to top when advancing steps
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    // Final step: hand the collected data back to the parent (App.jsx),
-    // which saves it via businessStore.js
-    onSubmit?.(form);
-    setSubmitted(true);
+    // Final step: submit to parent (App.jsx → saves via businessStore → navigates to dashboard)
+    setSubmitting(true);
+    try {
+      onSubmit?.(form);
+    } catch {
+      setSubmitting(false);
+    }
   };
 
   const handleBack = () => {
@@ -182,43 +193,13 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
     setStep((s) => Math.max(0, s - 1));
   };
 
-  if (submitted) {
-    return (
-      <div style={{ ...ibm, background: C.bg, minHeight: "100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
-        <div style={{
-          background: C.card, borderRadius: 16, padding: "48px 40px", maxWidth: 460,
-          textAlign: "center", border: `1px solid ${C.border}`, boxShadow: "0 4px 16px rgba(0,0,0,0.04)",
-        }}>
-          <div style={{
-            width: 56, height: 56, borderRadius: "50%", background: C.green, color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26,
-            margin: "0 auto 20px", boxShadow: "0 4px 16px rgba(74,122,73,0.25)",
-          }}>✓</div>
-          <div style={{ ...syne, fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 10 }}>
-            Business Registered
-          </div>
-          <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 24 }}>
-            <strong style={{ color: C.text }}>{form.businessName}</strong> has been submitted for verification.
-            We'll notify you at {form.email} once it's approved.
-          </div>
-          <button
-            onClick={() => onBack ? onBack() : (setSubmitted(false), setStep(0))}
-            style={{
-              background: C.green, color: "#fff", border: "none", borderRadius: 10,
-              padding: "12px 24px", fontSize: 13, fontWeight: 600, cursor: "pointer",
-              fontFamily: "'IBM Plex Sans', sans-serif", width: "100%",
-              boxShadow: "0 4px 16px rgba(74,122,73,0.2)",
-            }}
-          >
-            Continue →
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const visibleErrors = Object.fromEntries(
+    Object.entries(errors).filter(([key]) => requiredByStep[step].includes(key))
+  );
+
 
   return (
-    <div style={{ ...ibm, background: C.bg, minHeight: "100%", padding: 40 }}>
+    <div ref={topRef} style={{ ...ibm, background: C.bg, minHeight: "100%", padding: 40 }}>
       <div style={{ maxWidth: 640, margin: "0 auto" }}>
 
         <div style={{ marginBottom: 28 }}>
@@ -254,6 +235,18 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
           background: C.card, borderRadius: 12, padding: "28px",
           border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
         }}>
+
+          {/* Validation error banner */}
+          {Object.keys(visibleErrors).length > 0 && (
+            <div style={{
+              background: "#fdf0f0", border: `1px solid ${C.danger}`, borderRadius: 10,
+              padding: "12px 16px", marginBottom: 20, fontSize: 12,
+              color: C.danger, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>⚠</span>
+              Please fill in all required fields highlighted below ({Object.keys(visibleErrors).length} missing).
+            </div>
+          )}
 
           {step === 0 && (
             <>
@@ -422,14 +415,18 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
             </button>
             <button
               onClick={handleNext}
+              disabled={submitting}
               style={{
                 padding: "12px 26px", borderRadius: 10, border: "none",
-                background: C.green, color: "#fff", fontSize: 13, fontWeight: 600,
-                cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+                background: submitting ? C.greenLight : C.green,
+                color: "#fff", fontSize: 13, fontWeight: 600,
+                cursor: submitting ? "not-allowed" : "pointer",
+                fontFamily: "'IBM Plex Sans', sans-serif",
                 boxShadow: "0 4px 16px rgba(74,122,73,0.2)",
+                transition: "background .2s",
               }}
             >
-              {step === steps.length - 1 ? "Submit Registration" : "Continue"}
+              {submitting ? "Submitting..." : step === steps.length - 1 ? "Submit Registration" : "Continue"}
             </button>
           </div>
         </div>
