@@ -57,6 +57,7 @@ def inventory_overview(db: Session = Depends(get_db)):
         rows.append(
             {
                 "id": product.product_code or f"SKU-{product.id:03d}",
+                "product_id": product.id,
                 "name": product.product_code or product.name,
                 "category": product.category or product.location or "General",
                 "qty": product.supplier_stock or 0,

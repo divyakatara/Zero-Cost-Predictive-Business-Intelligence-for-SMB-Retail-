@@ -5,7 +5,7 @@ from sqlalchemy import text
 from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
-from routes import auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
+from routes import agent, auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
 
 # Create database tables when the app starts.
 models.Base.metadata.create_all(bind=engine)
@@ -148,6 +148,84 @@ def run_simple_migrations():
             text("ALTER TABLE retail_sales ADD COLUMN IF NOT EXISTS is_weekend BOOLEAN")
         )
 
+        # Agentic AI procurement tables: denormalized display fields, plus
+        # loosening product_id/supplier_id so a purchase-order/agent-action
+        # audit record can never block a product from being deleted (see
+        # models.py PurchaseOrder/AgentAction docstrings).
+        connection.execute(
+            text("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS product_code VARCHAR")
+        )
+        connection.execute(
+            text("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS product_name VARCHAR")
+        )
+        connection.execute(
+            text("ALTER TABLE purchase_orders ADD COLUMN IF NOT EXISTS supplier_name VARCHAR")
+        )
+        connection.execute(
+            text("ALTER TABLE purchase_orders ALTER COLUMN product_id DROP NOT NULL")
+        )
+        connection.execute(
+            text("ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_product_id_fkey")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE purchase_orders ADD CONSTRAINT purchase_orders_product_id_fkey "
+                "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL"
+            )
+        )
+        connection.execute(
+            text("ALTER TABLE purchase_orders DROP CONSTRAINT IF EXISTS purchase_orders_supplier_id_fkey")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE purchase_orders ADD CONSTRAINT purchase_orders_supplier_id_fkey "
+                "FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE SET NULL"
+            )
+        )
+        connection.execute(
+            text("ALTER TABLE agent_actions DROP CONSTRAINT IF EXISTS agent_actions_purchase_order_id_fkey")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE agent_actions ADD CONSTRAINT agent_actions_purchase_order_id_fkey "
+                "FOREIGN KEY (purchase_order_id) REFERENCES purchase_orders(id) ON DELETE SET NULL"
+            )
+        )
+        connection.execute(
+            text("ALTER TABLE agent_actions DROP CONSTRAINT IF EXISTS agent_actions_product_id_fkey")
+        )
+        connection.execute(
+            text(
+                "ALTER TABLE agent_actions ADD CONSTRAINT agent_actions_product_id_fkey "
+                "FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL"
+            )
+        )
+
+        # Backfill the denormalized snapshot fields for any purchase_orders rows
+        # created before this migration existed (safe/idempotent: only fills
+        # rows that are still NULL, never overwrites).
+        connection.execute(
+            text(
+                """
+                UPDATE purchase_orders po
+                SET product_code = p.product_code,
+                    product_name = COALESCE(p.product_code, p.name)
+                FROM products p
+                WHERE po.product_id = p.id AND po.product_code IS NULL
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE purchase_orders po
+                SET supplier_name = COALESCE(s.supplier_name, s.name)
+                FROM suppliers s
+                WHERE po.supplier_id = s.id AND po.supplier_name IS NULL
+                """
+            )
+        )
+
 
 # Keep the existing database updated with small schema changes.
 run_simple_migrations()
@@ -173,6 +251,7 @@ app.include_router(inventory.router)
 app.include_router(supplier.router)
 app.include_router(data.router)
 app.include_router(chat.router)
+app.include_router(agent.router)
 
 
 @app.on_event("startup")

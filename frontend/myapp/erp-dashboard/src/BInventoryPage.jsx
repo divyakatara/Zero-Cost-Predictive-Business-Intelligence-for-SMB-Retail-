@@ -30,7 +30,7 @@ const emptyData = {
   items: [],
 };
 
-export default function InventoryPage() {
+export default function InventoryPage({ onReorder } = {}) {
   const [search, setSearch] = useState("");
   const [data, setData] = useState(emptyData);
   const [error, setError] = useState("");
@@ -162,7 +162,23 @@ export default function InventoryPage() {
                   <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{item.supplier}</td>
                   <td style={{ padding: "14px 20px", fontSize: 12, color: C.textDim }}>{item.updated}</td>
                   <td style={{ padding: "14px 20px" }}>
-                    <button style={{ background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 7, padding: "6px 14px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif", color: C.green }}>
+                    <button
+                      onClick={() => onReorder?.(item.product_id)}
+                      disabled={!item.product_id}
+                      title={item.product_id ? "Open the Procurement AI recommendation for this product" : "Not available for this item"}
+                      style={{
+                        background: C.greenSubtle,
+                        border: `1px solid ${C.greenBorder}`,
+                        borderRadius: 7,
+                        padding: "6px 14px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: item.product_id ? "pointer" : "not-allowed",
+                        opacity: item.product_id ? 1 : 0.5,
+                        fontFamily: "'IBM Plex Sans', sans-serif",
+                        color: C.green,
+                      }}
+                    >
                       Reorder
                     </button>
                   </td>

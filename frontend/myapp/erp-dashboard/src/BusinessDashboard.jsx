@@ -16,6 +16,7 @@ import BAnalyticsPage from "./BAnalyticsPage";
 import BAIInsightsPage from "./BAIInsightsPage";
 import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
+import ProcurementAgentPage from "./BProcurementAgentPage";
 import ChatWidget from "./ChatWidget";
 import { API_BASE_URL } from "./api";
 
@@ -71,6 +72,7 @@ const navItems = [
   { label: "Dashboard", icon: "D" },
   { label: "Inventory", icon: "I" },
   { label: "Sales", icon: "S" },
+  { label: "Procurement AI", icon: "P" },
   { label: "Supplier Marketplace", icon: "M" },
   { label: "Analytics", icon: "A" },
   { label: "AI Insights", icon: "AI" },
@@ -159,6 +161,7 @@ export default function ERPDashboard({
   const isVerified = business ? business.status === "approved" : verificationStatus === "Verified";
   const [overview, setOverview] = useState(createEmptyOverview);
   const [dashboardError, setDashboardError] = useState("");
+  const [procurementFocusId, setProcurementFocusId] = useState(null);
 
   useEffect(() => {
     if (activeNav === "Settings" && !settingsTab) {
@@ -1358,8 +1361,22 @@ export default function ERPDashboard({
           </>
         )}
 
-        {activeNav === "Inventory" && <InventoryPage />}
+        {activeNav === "Inventory" && (
+          <InventoryPage
+            onReorder={(productId) => {
+              setProcurementFocusId(productId);
+              handleNavClick("Procurement AI");
+            }}
+          />
+        )}
         {activeNav === "Sales" && <SalesPage />}
+        {activeNav === "Procurement AI" && (
+          <ProcurementAgentPage
+            business={business}
+            focusProductId={procurementFocusId}
+            onFocusHandled={() => setProcurementFocusId(null)}
+          />
+        )}
         {activeNav === "Supplier Marketplace" && (
           business && business.status !== "approved" ? (
             <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, padding: "60px 40px", textAlign: "center", maxWidth: 560, margin: "40px auto", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
