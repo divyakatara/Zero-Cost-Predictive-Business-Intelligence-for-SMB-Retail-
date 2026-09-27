@@ -3,7 +3,7 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 
 # PostgreSQL database URL.
 # Replace YOUR_PASSWORD with your actual PostgreSQL password before running.
-DATABASE_URL = "postgresql://postgres:password-56@localhost:5432/smart_erp_users"
+DATABASE_URL = "postgresql://postgres:pwd-56@localhost:5432/smart_erp_users"
 
 # SQLAlchemy engine connects FastAPI to PostgreSQL.
 engine = create_engine(DATABASE_URL)

@@ -1,11 +1,21 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
 import schemas
 from database import get_db
+
+try:
+    import pandas as pd
+except ImportError:  # pragma: no cover
+    pd = None
+
+try:
+    from sklearn.tree import DecisionTreeRegressor
+except ImportError:  # pragma: no cover
+    DecisionTreeRegressor = None
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -39,15 +49,17 @@ def update_stock(item: schemas.InventoryCreate, db: Session = Depends(get_db)):
 def get_inventory(db: Session = Depends(get_db)):
     """Get all inventory records."""
     return db.query(models.Inventory).all()
-import pandas as pd
-from sklearn.tree import DecisionTreeRegressor
-from fastapi import HTTPException
 
 
 @router.get("/predict/{product_id}")
 def predict_demand(product_id: int, db: Session = Depends(get_db)):
     """Predict next-period demand for a product using a Decision Tree,
     and compare it against current stock to recommend a reorder."""
+    if pd is None or DecisionTreeRegressor is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Demand forecasting is unavailable because the ML dependencies are not working in this environment.",
+        )
 
     # Pull this product's sales history
     sales = (

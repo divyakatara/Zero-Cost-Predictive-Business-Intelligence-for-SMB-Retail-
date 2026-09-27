@@ -5,8 +5,8 @@ from sqlalchemy import text
 from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
-from routes import agent, auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
 
+from routes import agent, auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
 # Create database tables when the app starts.
 models.Base.metadata.create_all(bind=engine)
 
@@ -243,7 +243,6 @@ app.add_middleware(
 
 # Register all route files.
 app.include_router(auth.router)
-app.include_router(anomaly.router)
 app.include_router(business_pages.router)
 app.include_router(dashboard.router)
 app.include_router(sales.router)
