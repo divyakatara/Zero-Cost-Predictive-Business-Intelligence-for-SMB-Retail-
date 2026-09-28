@@ -215,6 +215,9 @@ def train_and_score(
                     rec[col] = bool(v)
                 else:
                     rec[col] = v
+            # The dataset's product_id column holds product codes (e.g. "item_1");
+            # expose it as product_code, the identifier every ML endpoint uses.
+            rec["product_code"] = rec["product_id"]
             records.append(rec)
         return records
 
