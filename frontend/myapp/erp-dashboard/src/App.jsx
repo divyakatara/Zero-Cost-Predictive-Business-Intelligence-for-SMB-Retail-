@@ -107,5 +107,7 @@ export default function App() {
     );
   }
 
-  if (user.role === "supplier") return <SupplierDashboard />;
+  if (user.role === "supplier") {
+    return <SupplierDashboard user={user} />;
+  }
 }
