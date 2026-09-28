@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from services.supplier_selection import ranked_suppliers
 
 router = APIRouter(prefix="/business-pages", tags=["Business Pages"])
 
@@ -227,12 +228,8 @@ def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get
     PurchaseOrder.requested_by (the business email). Until business_id exists
     (TASK-12/13) this is how orders are attributed to a business.
     """
-    suppliers = (
-        db.query(models.Supplier)
-        .filter(models.Supplier.supplier_code.isnot(None))
-        .order_by(models.Supplier.rank.asc().nulls_last(), desc(models.Supplier.rating))
-        .all()
-    )
+    # Same ordering the procurement agent uses to pick a supplier.
+    suppliers = ranked_suppliers(db)
 
     def supplier_card(supplier, index_rank=None, badge=None):
         calc_rank = supplier.rank or index_rank
