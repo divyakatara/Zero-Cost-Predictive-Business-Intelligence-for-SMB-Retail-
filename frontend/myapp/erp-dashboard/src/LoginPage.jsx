@@ -79,7 +79,29 @@ export default function LoginPage({ onLogin }) {
         }
       }
 
-      // Business or Supplier login/registration
+      if (role === "supplier" && mode === "login") {
+        // Supplier accounts live in the backend so the user carries its linked supplier_id
+        let res;
+        try {
+          res = await fetch(`${API_BASE_URL}/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+          });
+        } catch {
+          res = null; // Backend offline → fall through to an unlinked local login
+        }
+
+        if (res) {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || "Invalid email or password.");
+          if (data.user?.role !== "supplier") throw new Error("This account is not a supplier account.");
+          onLogin({ ...data.user, mode });
+          return;
+        }
+      }
+
+      // Business login/registration and supplier registration
       onLogin({ name: name || email.split("@")[0], email, role, mode });
     } catch (err) {
       setError(err.message || "Authentication failed. Please check your details.");
