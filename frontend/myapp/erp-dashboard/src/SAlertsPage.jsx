@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 
 /* SAME FONT SETUP */
 const fontLink = document.createElement("link");
@@ -29,52 +30,7 @@ const C = {
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-const filters = ["All", "Open", "Resolved"];
-
-/* KPI (SUPPLIER) */
-const kpis = [
-  { label: "Total Alerts", value: "0", sub: "No alerts yet", icon: "✩", accent: true },
-  { label: "Order Alerts", value: "0", sub: "No alerts yet", icon: "▹" },
-  { label: "Delivery Alerts", value: "0", sub: "No alerts yet", icon: "◉" },
-  { label: "System Alerts", value: "0", sub: "No alerts yet", icon: "🕸" },
-];
-
-/* ALERT DATA */
-const orderAlerts = [
-  {
-    title: "No order issue alert",
-    subtitle: "Orders",
-    severity: "Low",
-    status: "No data",
-    note: "No order-related issues detected yet.",
-  },
-];
-
-const deliveryAlerts = [
-  {
-    title: "No delivery delay alert",
-    subtitle: "Delivery",
-    severity: "Low",
-    status: "No data",
-    note: "No delivery issues detected yet.",
-  },
-];
-
-const systemAlerts = [
-  {
-    title: "No supplier risk alert",
-    subtitle: "System",
-    severity: "Low",
-    status: "No data",
-    note: "No system-related issue detected yet.",
-  },
-];
-
-const recentTable = [
-  { type: "Orders", alert: "No alert yet", severity: "Low", status: "No data" },
-  { type: "Delivery", alert: "No alert yet", severity: "Low", status: "No data" },
-  { type: "System", alert: "No alert yet", severity: "Low", status: "No data" },
-];
+const filters = ["All", "High Risk", "Moderate Risk"];
 
 /* ALERT CARD */
 function AlertCard({ item, tone }) {
@@ -98,8 +54,74 @@ function AlertCard({ item, tone }) {
   );
 }
 
-export default function SAlertsPage() {
+function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime())
+    ? String(value)
+    : date.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+export default function SAlertsPage({ user }) {
+  const supplierId = user?.supplier_id;
   const [filter, setFilter] = useState("All");
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(Boolean(supplierId));
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!supplierId) return undefined;
+    let ignore = false;
+
+    async function loadData() {
+      setLoading(true);
+      try {
+        const response = await fetchJson(`/anomaly/suppliers/${encodeURIComponent(supplierId)}`);
+        if (!ignore) {
+          setData(response);
+          setError("");
+        }
+      } catch {
+        if (!ignore) {
+          setData(null);
+          setError("Could not load anomaly alerts from the backend.");
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      ignore = true;
+    };
+  }, [supplierId]);
+
+  // Same high/moderate cut-off as the business alerts page, provided by the backend.
+  const threshold = data?.high_risk_threshold ?? -0.03;
+  const isHighRisk = (a) => (a.anomaly_score ?? 0) < threshold;
+  const anomalies = (data?.results || []).filter((a) =>
+    filter === "All" ? true : filter === "High Risk" ? isHighRisk(a) : !isHighRisk(a)
+  );
+  const perProduct = Object.entries(data?.anomalies_per_product || {}).sort((a, b) => b[1] - a[1]);
+  const mostAffected = perProduct.find(([, count]) => count > 0);
+
+  const kpis = [
+    { label: "Total Anomalies", value: data?.total_anomalies ?? "-", sub: "Unusual sales of your products" },
+    { label: "High Risk", value: data?.high_risk ?? "-", sub: `Anomaly score below ${threshold}` },
+    {
+      label: "Products Affected",
+      value: data ? perProduct.filter(([, count]) => count > 0).length : "-",
+      sub: data ? `Out of ${data.product_codes.length} you supply` : "",
+    },
+    { label: "Most Affected", value: mostAffected ? mostAffected[0] : "-", sub: mostAffected ? `${mostAffected[1]} anomalies` : "No anomalies" },
+  ];
+
+  let notice = "";
+  if (!supplierId) notice = "This account is not linked to a supplier record, so there are no products to monitor yet.";
+  else if (error) notice = error;
+  else if (loading) notice = "Loading anomaly alerts…";
+  else if (data && data.product_codes.length === 0) notice = "No products are linked to this supplier yet, so there is nothing to monitor.";
 
   return (
     <div style={{ ...ibm }}>
@@ -114,18 +136,26 @@ export default function SAlertsPage() {
             </h1>
           </div>
           <p style={{ marginLeft: 13, color: C.textDim, fontSize: 12 }}>
-            Supplier warnings and system alerts · No data yet
+            {data
+              ? `Isolation Forest anomalies for ${data.supplier_name} (${data.supplier_code}) · ${data.product_codes.length} product(s) monitored`
+              : "Isolation Forest anomalies for your products"}
           </p>
         </div>
 
         <div>
           {filters.map(f => (
-            <button key={f} onClick={() => setFilter(f)}>
+            <button key={f} onClick={() => setFilter(f)} style={{ fontWeight: filter === f ? 700 : 400 }}>
               {f}
             </button>
           ))}
         </div>
       </div>
+
+      {notice && (
+        <div style={{ marginBottom: 18, padding: "12px 14px", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, color: C.textMuted, fontSize: 13 }}>
+          {notice}
+        </div>
+      )}
 
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
@@ -138,37 +168,59 @@ export default function SAlertsPage() {
         ))}
       </div>
 
-      {/* ALERTS */}
-      <div style={{ marginTop: 20 }}>
-        <h3>Order Alerts</h3>
-        {orderAlerts.map(a => <AlertCard key={a.title} item={a} />)}
-
-        <h3>Delivery Alerts</h3>
-        {deliveryAlerts.map(a => <AlertCard key={a.title} item={a} />)}
-
-        <h3>System Alerts</h3>
-        {systemAlerts.map(a => <AlertCard key={a.title} item={a} />)}
-      </div>
+      {/* ALERTS BY PRODUCT */}
+      {perProduct.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <h3>Alerts by Product</h3>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 12 }}>
+            {perProduct.map(([code, count]) => {
+              const productRows = data.results.filter((a) => a.product_id === code);
+              const high = productRows.filter(isHighRisk).length;
+              const latest = productRows.map((a) => a.sale_date).sort().at(-1);
+              return (
+                <AlertCard
+                  key={code}
+                  tone={high > 0 ? "danger" : count > 0 ? "warn" : undefined}
+                  item={{
+                    title: code,
+                    subtitle: "Product",
+                    severity: high > 0 ? "High" : count > 0 ? "Moderate" : "None",
+                    status: count > 0 ? `${count} anomalies` : "Normal",
+                    note: count > 0 ? `${high} high risk · latest ${formatDate(latest)}` : "No unusual sales detected.",
+                  }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* TABLE */}
       <table style={{ width: "100%", marginTop: 20 }}>
         <thead>
           <tr>
-            <th>Type</th>
-            <th>Alert</th>
+            <th>Date</th>
+            <th>Product</th>
+            <th>Branch</th>
             <th>Severity</th>
-            <th>Status</th>
+            <th>Why it was flagged</th>
           </tr>
         </thead>
         <tbody>
-          {recentTable.map(r => (
-            <tr key={r.type}>
-              <td>{r.type}</td>
-              <td>{r.alert}</td>
-              <td>{r.severity}</td>
-              <td>{r.status}</td>
+          {anomalies.map(a => (
+            <tr key={a.transaction_id}>
+              <td>{formatDate(a.sale_date)}</td>
+              <td>{a.product_id}</td>
+              <td>{a.branch_id}</td>
+              <td>{isHighRisk(a) ? "High" : "Moderate"} ({a.anomaly_score?.toFixed(3)})</td>
+              <td>{a.explanation}</td>
             </tr>
           ))}
+          {data && anomalies.length === 0 && (
+            <tr>
+              <td colSpan={5} style={{ color: C.textDim }}>No anomalies match this filter.</td>
+            </tr>
+          )}
         </tbody>
       </table>
 

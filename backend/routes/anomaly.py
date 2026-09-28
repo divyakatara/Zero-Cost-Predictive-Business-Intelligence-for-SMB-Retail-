@@ -1,12 +1,18 @@
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy.orm import Session
 
+import models
+from database import get_db
 from ml.anomaly import AnomalyResult, train_and_score
 
 router = APIRouter(prefix="/anomaly", tags=["Anomaly Detection"])
 
 _LAST_RESULT: Optional[AnomalyResult] = None
+
+# Same cut-off the business alerts page uses: scores below this are "high risk".
+HIGH_RISK_SCORE = -0.03
 
 
 def _get_result(refresh: bool = False) -> AnomalyResult:
@@ -75,4 +81,43 @@ def get_all_scored(
         "total_rows": result.summary["total_rows"],
         "total_anomalies": result.summary["total_anomalies"],
         "results": rows,
+    }
+
+
+@router.get("/suppliers/{supplier_code}")
+def get_supplier_anomalies(
+    supplier_code: str,
+    limit: int = Query(200, ge=1, le=500, description="Max anomalies to return, ordered by worst score first"),
+    refresh: bool = Query(False, description="Re-train model and re-score all rows"),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Anomalies for the products this supplier provides (Product.supplier_code)."""
+    supplier = db.query(models.Supplier).filter(models.Supplier.supplier_code == supplier_code).first()
+    if supplier is None:
+        raise HTTPException(status_code=404, detail="No supplier record matches this supplier ID.")
+
+    product_codes = sorted(
+        code for (code,) in db.query(models.Product.product_code)
+        .filter(models.Product.supplier_code == supplier_code, models.Product.product_code.isnot(None))
+    )
+
+    result = _get_result(refresh=refresh)
+    # Anomaly records key products by code in their product_id field (e.g. "item_1").
+    anomalies = [a for a in result.anomalies if a.get("product_id") in product_codes]
+
+    per_product = {code: 0 for code in product_codes}
+    for a in anomalies:
+        per_product[a["product_id"]] += 1
+    high_risk = sum(1 for a in anomalies if (a.get("anomaly_score") or 0) < HIGH_RISK_SCORE)
+
+    return {
+        "supplier_code": supplier.supplier_code,
+        "supplier_name": supplier.supplier_name or supplier.name,
+        "product_codes": product_codes,
+        "total_anomalies": len(anomalies),
+        "high_risk": high_risk,
+        "moderate_risk": len(anomalies) - high_risk,
+        "high_risk_threshold": HIGH_RISK_SCORE,
+        "anomalies_per_product": per_product,
+        "results": anomalies[:limit],
     }
