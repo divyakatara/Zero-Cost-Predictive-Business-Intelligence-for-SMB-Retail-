@@ -87,7 +87,9 @@ function SupplierDetailModal({ supplier, onClose, isMySupplier }) {
   );
 }
 
-export default function SupplierMarketplacePage() {
+export default function SupplierMarketplacePage({ business }) {
+  // Same identity the procurement agent records on orders, so "My Suppliers" reflects this business's history
+  const identity = business?.email || business?.businessName || "";
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [isMySupplier, setIsMySupplier] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -100,7 +102,8 @@ export default function SupplierMarketplacePage() {
 
     async function loadData() {
       try {
-        const response = await fetchJson("/business-pages/suppliers");
+        const query = identity ? `?business=${encodeURIComponent(identity)}` : "";
+        const response = await fetchJson(`/business-pages/suppliers${query}`);
         if (!ignore) {
           setData(response);
           setError("");
@@ -117,7 +120,7 @@ export default function SupplierMarketplacePage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [identity]);
 
   function openSupplier(supplier, isMine) {
     setSelectedSupplier(supplier);

@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import desc, func
@@ -219,7 +220,13 @@ def sales_overview(db: Session = Depends(get_db)):
 
 
 @router.get("/suppliers")
-def suppliers_overview(db: Session = Depends(get_db)):
+def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get_db)):
+    """Supplier marketplace, personalized by the caller's purchase history.
+
+    `business` is the identity the procurement agent records as
+    PurchaseOrder.requested_by (the business email). Until business_id exists
+    (TASK-12/13) this is how orders are attributed to a business.
+    """
     suppliers = (
         db.query(models.Supplier)
         .filter(models.Supplier.supplier_code.isnot(None))
@@ -257,9 +264,37 @@ def suppliers_overview(db: Session = Depends(get_db)):
             "qualityScore": q_score,
         }
 
-    my_suppliers = [supplier_card(supplier) for supplier in suppliers[:3]]
+    # Suppliers this business has actually ordered from, most-used first.
+    order_counts = {}
+    if business:
+        order_counts = dict(
+            db.query(models.PurchaseOrder.supplier_id, func.count(models.PurchaseOrder.id))
+            .filter(func.lower(models.PurchaseOrder.requested_by) == business.strip().lower())
+            .filter(models.PurchaseOrder.status == "created")
+            .filter(models.PurchaseOrder.supplier_id.isnot(None))
+            .group_by(models.PurchaseOrder.supplier_id)
+            .all()
+        )
+
+    used = sorted(
+        (supplier for supplier in suppliers if supplier.id in order_counts),
+        key=lambda supplier: -order_counts[supplier.id],  # stable sort keeps rank order on ties
+    )
+    if used:
+        my_suppliers = [
+            supplier_card(supplier, badge=f"{order_counts[supplier.id]} order(s) placed")
+            for supplier in used
+        ]
+    else:
+        # No purchase history yet: start from the top-ranked suppliers.
+        used = suppliers[:3]
+        my_suppliers = [supplier_card(supplier) for supplier in used]
+
+    used_ids = {supplier.id for supplier in used}
     recommended = []
-    for index, supplier in enumerate(suppliers[3:12], start=4):
+    for index, supplier in enumerate(suppliers, start=1):
+        if supplier.id in used_ids or len(recommended) >= 9:
+            continue
         badge = f"Rank #{supplier.rank or index}"
         recommended.append(supplier_card(supplier, index_rank=index, badge=badge))
 

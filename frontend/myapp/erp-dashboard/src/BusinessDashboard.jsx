@@ -1391,7 +1391,7 @@ export default function ERPDashboard({
               <button onClick={() => handleNavClick("Settings")} style={{ background: C.green, color: "#fff", border: "none", padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Check Account Verification →</button>
             </div>
           ) : (
-            <SupplierMarketplacePage />
+            <SupplierMarketplacePage business={business} />
           )
         )}
         {activeNav === "Analytics" && <BAnalyticsPage />}
