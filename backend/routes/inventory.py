@@ -51,6 +51,45 @@ def get_inventory(db: Session = Depends(get_db)):
     return db.query(models.Inventory).all()
 
 
+FEATURES = ["weekday", "month", "is_weekend", "promo", "lag_1", "lag_7"]
+
+
+def build_training_frame(sales):
+    """One row per sale (oldest first) with lag features derived from this
+    product's own quantity series: lag_1 = previous period, lag_7 = seven
+    periods back. The stored lag_1/lag_7 columns are not used because they
+    are incomplete (lag_1 is empty) and counted per branch rather than per
+    period, so they don't match what the forecast row can be built from.
+    Rows without a full 7-period history are dropped.
+    """
+    data = pd.DataFrame([{
+        "weekday": s.weekday,
+        "month": s.month,
+        "is_weekend": int(s.is_weekend) if s.is_weekend is not None else 0,
+        "promo": int(s.promo) if s.promo is not None else 0,
+        "quantity_sold": s.quantity_sold,
+    } for s in sales])
+    data = data.dropna(subset=["weekday", "month", "quantity_sold"])
+    data["lag_1"] = data["quantity_sold"].shift(1)
+    data["lag_7"] = data["quantity_sold"].shift(7)
+    return data.dropna(subset=["lag_1", "lag_7"]).astype(int).reset_index(drop=True)
+
+
+def build_forecast_row(data):
+    """Feature row for the period right after the last one in `data`."""
+    last_row = data.iloc[-1]
+    next_weekday = (int(last_row["weekday"]) + 1) % 7
+    return {
+        "weekday": next_weekday,
+        "month": int(last_row["month"]),
+        "is_weekend": 1 if next_weekday in (5, 6) else 0,
+        "promo": 0,
+        "lag_1": int(data["quantity_sold"].iloc[-1]),
+        # The forecast period is one step after the last row, so 7 periods back is the 7th-from-last row.
+        "lag_7": int(data["quantity_sold"].iloc[-7]),
+    }
+
+
 @router.get("/predict/{product_id}")
 def predict_demand(product_id: int, db: Session = Depends(get_db)):
     """Predict next-period demand for a product using a Decision Tree,
@@ -75,37 +114,21 @@ def predict_demand(product_id: int, db: Session = Depends(get_db)):
             detail="Not enough sales history for this product to make a prediction (need at least 10 records).",
         )
 
-    # Build a dataframe from the sales rows
-    data = pd.DataFrame([{
-        "weekday": s.weekday,
-        "month": s.month,
-        "is_weekend": int(s.is_weekend) if s.is_weekend is not None else 0,
-        "promo": int(s.promo) if s.promo is not None else 0,
-        "lag_1": s.lag_1 if s.lag_1 is not None else 0,
-        "lag_7": s.lag_7 if s.lag_7 is not None else 0,
-        "quantity_sold": s.quantity_sold,
-    } for s in sales])
+    data = build_training_frame(sales)
+    if len(data) < 7:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough sales history for this product to make a prediction.",
+        )
 
-    data = data.dropna()
-
-    features = ["weekday", "month", "is_weekend", "promo", "lag_1", "lag_7"]
-    X = data[features]
+    X = data[FEATURES]
     y = data["quantity_sold"]
 
     # Train the Decision Tree(ML)
     model = DecisionTreeRegressor(max_depth=6, random_state=42)
     model.fit(X, y)
 
-    # Build "next period" input using the most recent sale as a base
-    last_row = data.iloc[-1]
-    next_input = pd.DataFrame([{
-        "weekday": (int(last_row["weekday"]) + 1) % 7,
-        "month": int(last_row["month"]),
-        "is_weekend": 1 if ((int(last_row["weekday"]) + 1) % 7) in (5, 6) else 0,
-        "promo": 0,
-        "lag_1": int(last_row["quantity_sold"]),
-        "lag_7": int(last_row["lag_1"]),
-    }])
+    next_input = pd.DataFrame([build_forecast_row(data)])
     #ML stmt
     predicted_demand = max(0, round(model.predict(next_input)[0]))
 
