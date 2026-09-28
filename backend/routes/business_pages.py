@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
@@ -633,4 +633,351 @@ def alerts_overview(db: Session = Depends(get_db)):
         "salesAlerts": sales_alerts,
         "systemAlerts": system_alerts,
         "recentTable": recent_table[:6],
+    }
+
+@router.get("/supplier-insights")
+def supplier_insights(
+    supplier_code: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Build supplier-specific insights from database records.
+
+    The supplier_code must match the supplier linked to the
+    supplier account in the frontend.
+    """
+
+    supplier = (
+        db.query(models.Supplier)
+        .filter(models.Supplier.supplier_code == supplier_code)
+        .first()
+    )
+
+    if supplier is None:
+        raise HTTPException(
+            status_code=404,
+            detail="No supplier record is linked to this supplier code.",
+        )
+
+    # Retrieve only stock records belonging to this supplier.
+    stock_rows = (
+        db.query(models.SupplierStock, models.Product)
+        .outerjoin(
+            models.Product,
+            models.Product.product_code
+            == models.SupplierStock.product_id,
+        )
+        .filter(
+            models.SupplierStock.supplier_id == supplier_code
+        )
+        .all()
+    )
+
+    supplier_rating = (
+        float(supplier.rating)
+        if supplier.rating is not None
+        else None
+    )
+
+    lead_time = (
+        int(supplier.lead_time)
+        if supplier.lead_time is not None
+        else None
+    )
+
+    supplier_risk = (
+        float(supplier.supply_risk_score)
+        if supplier.supply_risk_score is not None
+        else None
+    )
+
+    def risk_is_high(value):
+        if value is None:
+            return False
+
+        # Supports both 0–10 and 0–100 risk-score scales.
+        if value > 10:
+            return value >= 30
+
+        return value >= 3
+
+    records = []
+
+    for stock, product in stock_rows:
+        quantity = stock.supplier_stock
+        reorder_level = stock.reorder_level
+
+        if quantity is None:
+            status = "unknown"
+        elif (
+            stock.stock_status
+            and stock.stock_status.lower() in {
+                "critical",
+                "low",
+                "ok",
+            }
+        ):
+            status = stock.stock_status.lower()
+        elif reorder_level is not None and quantity <= reorder_level:
+            status = "critical"
+        elif (
+            reorder_level is not None
+            and quantity <= reorder_level * 1.25
+        ):
+            status = "low"
+        else:
+            status = "ok"
+
+        risk_value = (
+            float(stock.supply_risk_score)
+            if stock.supply_risk_score is not None
+            else supplier_risk
+        )
+
+        records.append(
+            {
+                "productCode": stock.product_id,
+                "productName": (
+                    product.name
+                    if product is not None
+                    else stock.product_id
+                ),
+                "stock": quantity,
+                "reorderLevel": reorder_level,
+                "status": status,
+                "riskScore": risk_value,
+                "utilization": stock.stock_utilization_rate,
+                "branch": stock.branch_id,
+            }
+        )
+
+    critical_records = [
+        item for item in records
+        if item["status"] == "critical"
+    ]
+
+    low_records = [
+        item for item in records
+        if item["status"] == "low"
+    ]
+
+    replenishment_records = [
+        item for item in records
+        if item["status"] in {"critical", "low"}
+    ]
+
+    risky_records = [
+        item for item in records
+        if risk_is_high(item["riskScore"])
+    ]
+
+    supplier_has_high_risk = risk_is_high(supplier_risk)
+
+    action_items = (
+        len(replenishment_records)
+        + (
+            1
+            if supplier_has_high_risk and not risky_records
+            else 0
+        )
+    )
+
+    # The performance score is derived from the supplier's recorded rating.
+    performance_score = (
+        round((supplier_rating / 5) * 100, 1)
+        if supplier_rating is not None
+        else None
+    )
+
+    primary_suggestions = []
+
+    for item in replenishment_records[:5]:
+        is_critical = item["status"] == "critical"
+
+        quantity_text = (
+            str(item["stock"])
+            if item["stock"] is not None
+            else "Unknown"
+        )
+
+        reorder_text = (
+            str(item["reorderLevel"])
+            if item["reorderLevel"] is not None
+            else "not recorded"
+        )
+
+        primary_suggestions.append(
+            {
+                "title": (
+                    f"Prepare replenishment for {item['productName']}"
+                ),
+                "subtitle": "Inventory",
+                "priority": "High" if is_critical else "Medium",
+                "impact": f"{quantity_text} units currently recorded",
+                "action": (
+                    "Review replenishment requirements"
+                    if is_critical
+                    else "Monitor stock against the reorder level"
+                ),
+                "reason": (
+                    f"Recorded stock is {quantity_text} units; "
+                    f"the reorder level is {reorder_text}."
+                ),
+                "status": item["status"].title(),
+            }
+        )
+
+    if risky_records or supplier_has_high_risk:
+        risk_values = [
+            item["riskScore"]
+            for item in risky_records
+            if item["riskScore"] is not None
+        ]
+
+        if supplier_risk is not None:
+            risk_values.append(supplier_risk)
+
+        displayed_risk = (
+            max(risk_values)
+            if risk_values
+            else None
+        )
+
+        primary_suggestions.append(
+            {
+                "title": "Review supplier delivery risk",
+                "subtitle": "Delivery",
+                "priority": "High",
+                "impact": (
+                    f"Recorded risk score: {displayed_risk:g}"
+                    if displayed_risk is not None
+                    else "Risk flagged in supplier records"
+                ),
+                "action": "Review lead time and fulfilment planning",
+                "reason": (
+                    "The recorded supplier risk score meets "
+                    "the configured review threshold."
+                ),
+                "status": "Review",
+            }
+        )
+
+    if (
+        not primary_suggestions
+        and records
+        and not risky_records
+        and not supplier_has_high_risk
+    ):
+        primary_suggestions.append(
+            {
+                "title": "Continue monitoring stock levels",
+                "subtitle": "Inventory",
+                "priority": "Normal",
+                "impact": f"{len(records)} stock records reviewed",
+                "action": "Continue routine stock monitoring",
+                "reason": (
+                    "No recorded stock row is currently marked "
+                    "low or critical, and no elevated risk score "
+                    "was found in the retrieved records."
+                ),
+                "status": "Monitor",
+            }
+        )
+
+    average_lead_time = (
+        lead_time
+        if lead_time is not None
+        else None
+    )
+
+    recommendation_cards = [
+        {
+            "title": "Products monitored",
+            "value": len(records),
+            "note": "Supplier stock records retrieved",
+        },
+        {
+            "title": "Replenishment items",
+            "value": len(replenishment_records),
+            "note": "Items at or below stock thresholds",
+        },
+        {
+            "title": "Risk-flagged items",
+            "value": len(risky_records),
+            "note": "Based on recorded supply risk scores",
+        },
+        {
+            "title": "Recorded lead time",
+            "value": (
+                f"{average_lead_time} days"
+                if average_lead_time is not None
+                else "N/A"
+            ),
+            "note": "Lead time stored for this supplier",
+        },
+    ]
+
+    suggestion_table = [
+        {
+            "area": item["subtitle"],
+            "suggestion": item["action"],
+            "priority": item["priority"],
+            "status": item["status"],
+        }
+        for item in primary_suggestions
+    ]
+
+    if not records:
+        data_note = (
+            "The supplier is linked, but no supplier stock records "
+            "were found for this supplier code."
+        )
+    else:
+        data_note = (
+            f"{len(records)} supplier stock records loaded "
+            "from the database."
+        )
+
+    return {
+        "supplierCode": supplier.supplier_code,
+        "supplierName": supplier.supplier_name or supplier.name,
+        "headerNote": data_note,
+        "kpis": [
+            {
+                "label": "Action Items",
+                "value": action_items,
+                "sub": "Items needing review based on recorded data",
+            },
+            {
+                "label": "Order Opportunities",
+                "value": len(replenishment_records),
+                "sub": "Items at or below recorded reorder thresholds",
+            },
+            {
+                "label": "Delivery Risks",
+                "value": (
+                    len(risky_records)
+                    if risky_records
+                    else int(supplier_has_high_risk)
+                ),
+                "sub": "Based on recorded supply risk scores",
+            },
+            {
+                "label": "Performance Score",
+                "value": (
+                    f"{performance_score}%"
+                    if performance_score is not None
+                    else "N/A"
+                ),
+                "sub": (
+                    "Calculated from the recorded 1–5 rating"
+                    if performance_score is not None
+                    else "No supplier rating recorded"
+                ),
+            },
+        ],
+        "primarySuggestions": primary_suggestions,
+        "recommendationCards": recommendation_cards,
+        "suggestionTable": suggestion_table,
+        "records": records,
     }
