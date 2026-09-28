@@ -35,15 +35,17 @@ def get_anomaly_summary(refresh: bool = Query(False, description="Re-train model
 @router.get("/anomalies")
 def get_anomalies(
     limit: int = Query(50, ge=1, le=500, description="Max anomalies to return, ordered by worst score first"),
-    product_id: Optional[str] = Query(None, description="Filter by product_id"),
+    product_code: Optional[str] = Query(None, description="Filter by product_code (e.g. item_1)"),
+    product_id: Optional[str] = Query(None, description="Deprecated alias of product_code"),
     branch_id: Optional[str] = Query(None, description="Filter by branch_id"),
     refresh: bool = Query(False, description="Re-train model and re-score all rows"),
 ) -> dict[str, Any]:
     result = _get_result(refresh=refresh)
     anomalies = result.anomalies
 
-    if product_id:
-        anomalies = [a for a in anomalies if a.get("product_id") == product_id]
+    product_code = product_code or product_id
+    if product_code:
+        anomalies = [a for a in anomalies if a.get("product_code") == product_code]
     if branch_id:
         anomalies = [a for a in anomalies if a.get("branch_id") == branch_id]
 
@@ -53,7 +55,7 @@ def get_anomalies(
         "total_anomalies": result.summary["total_anomalies"],
         "total_rows": result.summary["total_rows"],
         "filters_applied": {
-            "product_id": product_id,
+            "product_code": product_code,
             "branch_id": branch_id,
         },
         "results": anomalies,

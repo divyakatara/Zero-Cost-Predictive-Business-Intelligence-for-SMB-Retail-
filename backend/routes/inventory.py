@@ -90,20 +90,28 @@ def build_forecast_row(data):
     }
 
 
-@router.get("/predict/{product_id}")
-def predict_demand(product_id: int, db: Session = Depends(get_db)):
+@router.get("/predict/{product_code}")
+def predict_demand(product_code: str, db: Session = Depends(get_db)):
     """Predict next-period demand for a product using a Decision Tree,
-    and compare it against current stock to recommend a reorder."""
+    and compare it against current stock to recommend a reorder.
+
+    Takes the public product_code (e.g. "item_1"), the same identifier the
+    anomaly API uses; it is translated to products.id internally.
+    """
     if pd is None or DecisionTreeRegressor is None:
         raise HTTPException(
             status_code=503,
             detail="Demand forecasting is unavailable because the ML dependencies are not working in this environment.",
         )
 
+    product = db.query(models.Product).filter(models.Product.product_code == product_code).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail=f"No product with product_code '{product_code}'.")
+
     # Pull this product's sales history
     sales = (
         db.query(models.Sale)
-        .filter(models.Sale.product_id == product_id)
+        .filter(models.Sale.product_id == product.id)
         .order_by(models.Sale.sale_date)
         .all()
     )
@@ -135,7 +143,7 @@ def predict_demand(product_id: int, db: Session = Depends(get_db)):
     # Compare against current inventory
     inventory_item = (
         db.query(models.Inventory)
-        .filter(models.Inventory.product_id == product_id)
+        .filter(models.Inventory.product_id == product.id)
         .first()
     )
 
@@ -149,7 +157,7 @@ def predict_demand(product_id: int, db: Session = Depends(get_db)):
         )
 
     return {
-        "product_id": product_id,
+        "product_code": product_code,
         "predicted_demand": int(predicted_demand),
         "current_stock": current_stock,
         "reorder_level": reorder_level,
