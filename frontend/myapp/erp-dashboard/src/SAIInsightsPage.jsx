@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 
 /* SAME FONT SETUP */
 const fontLink = document.createElement("link");
@@ -25,101 +26,82 @@ const C = {
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-const filters = ["Today", "This Week", "This Month"];
+const emptyState = {
+  headerNote: "Smart supplier recommendations · Waiting for backend data",
+  kpis: [],
+  primarySuggestions: [],
+  recommendationCards: [],
+  suggestionTable: [],
+};
 
-/* KPI (SUPPLIER SIDE) */
-const kpis = [
-  { label: "Action Items", value: "0", sub: "No suggestions yet", icon: "✧", accent: true },
-  { label: "Order Opportunities", value: "0", sub: "No suggestions yet", icon: "❊" },
-  { label: "Delivery Risks", value: "0", sub: "No suggestions yet", icon: "⍟" },
-  { label: "Performance Score", value: "0%", sub: "No suggestions yet", icon: "✵" },
-];
+export default function SAIInsightsPage({ user }) {
+  const supplierId = user?.supplier_id;
+  const [data, setData] = useState(emptyState);
+  const [loading, setLoading] = useState(Boolean(supplierId));
+  const [error, setError] = useState("");
 
-/* AI SUGGESTIONS */
-const primarySuggestions = [
-  {
-    title: "No pricing optimization available",
-    subtitle: "Pricing",
-    priority: "Priority 0",
-    impact: "0%",
-    action: "No action suggested yet",
-    reason: "No supplier data available to generate pricing insight.",
-  },
-  {
-    title: "No inventory restock insight",
-    subtitle: "Inventory",
-    priority: "Priority 0",
-    impact: "0%",
-    action: "No action suggested yet",
-    reason: "No stock movement data available.",
-  },
-  {
-    title: "No delivery optimization insight",
-    subtitle: "Delivery",
-    priority: "Priority 0",
-    impact: "0%",
-    action: "No action suggested yet",
-    reason: "No delivery performance data available.",
-  },
-];
+  useEffect(() => {
+    if (!supplierId) return undefined;
+    let ignore = false;
 
-/* OPPORTUNITY CARDS */
-const recommendationCards = [
-  { title: "Increase order volume", value: "0", note: "No data yet" },
-  { title: "Improve delivery speed", value: "0", note: "No data yet" },
-  { title: "Optimize stock supply", value: "0", note: "No data yet" },
-  { title: "Reduce order delays", value: "0", note: "No data yet" },
-];
+    async function loadData() {
+      setLoading(true);
+      try {
+        const response = await fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/insights`);
+        if (!ignore) {
+          setData(response);
+          setError("");
+        }
+      } catch {
+        if (!ignore) {
+          setData(emptyState);
+          setError("Could not load supplier insights from the backend.");
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
 
-/* TABLE */
-const suggestionTable = [
-  { area: "Orders", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Inventory", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Delivery", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Performance", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-];
+    loadData();
+    return () => {
+      ignore = true;
+    };
+  }, [supplierId]);
 
-export default function SAIInsightsPage() {
-  const [filter, setFilter] = useState("Today");
+  const notice = !supplierId
+    ? "This account is not linked to a supplier record, so there is no supplier data to analyse yet."
+    : error || (loading ? "Loading supplier insights…" : "");
 
   return (
     <div style={{ ...ibm }}>
 
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 32 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 3, height: 28, background: C.green }}></div>
-            <h1 style={{ ...syne, fontSize: 26, fontWeight: 800 }}>
-              Supplier AI Insights
-            </h1>
-          </div>
-          <p style={{ marginLeft: 13, color: C.textDim, fontSize: 12 }}>
-            Smart supplier recommendations · No data yet
-          </p>
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 3, height: 28, background: C.green }}></div>
+          <h1 style={{ ...syne, fontSize: 26, fontWeight: 800 }}>
+            Supplier AI Insights
+          </h1>
         </div>
-
-        <div style={{ display: "flex", background: "#eee8e0", borderRadius: 10, padding: 4 }}>
-          {filters.map(f => (
-            <button key={f} onClick={() => setFilter(f)} style={{
-              padding: "8px 16px",
-              border: "none",
-              background: filter === f ? C.card : "transparent",
-              cursor: "pointer",
-              fontFamily: "'IBM Plex Sans'"
-            }}>{f}</button>
-          ))}
-        </div>
+        <p style={{ marginLeft: 13, color: C.textDim, fontSize: 12 }}>
+          {data.headerNote}
+        </p>
       </div>
+
+      {notice && (
+        <div style={{ marginBottom: 18, padding: "12px 14px", background: C.card, border: `1px solid ${C.border}`, borderRadius: 10, color: C.textMuted, fontSize: 13 }}>
+          {notice}
+        </div>
+      )}
 
       {/* KPI */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
-        {kpis.map((kpi) => (
+        {data.kpis.map((kpi, index) => (
           <div key={kpi.label} style={{
-            background: kpi.accent ? C.green : C.card,
+            background: index === 0 ? C.green : C.card,
             padding: 20,
             borderRadius: 12,
-            color: kpi.accent ? "#fff" : C.text
+            color: index === 0 ? "#fff" : C.text
           }}>
             <div>{kpi.label}</div>
             <div style={{ ...syne, fontSize: 26 }}>{kpi.value}</div>
@@ -134,10 +116,14 @@ export default function SAIInsightsPage() {
         {/* SUGGESTIONS */}
         <div style={{ background: C.card, padding: 24, borderRadius: 12 }}>
           <h3>Top AI Suggestions</h3>
-          {primarySuggestions.map((item) => (
-            <div key={item.title} style={{ marginBottom: 12 }}>
+          {data.primarySuggestions.map((item) => (
+            <div key={item.subtitle} style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>
+                {item.subtitle} · {item.priority}
+              </div>
               <b>{item.title}</b>
-              <p>{item.reason}</p>
+              <p style={{ margin: "4px 0", color: C.textMuted, fontSize: 13 }}>{item.reason}</p>
+              <div style={{ fontSize: 12, color: C.green }}>{item.action} · {item.impact}</div>
             </div>
           ))}
         </div>
@@ -145,9 +131,10 @@ export default function SAIInsightsPage() {
         {/* OPPORTUNITIES */}
         <div style={{ background: C.cardGreen, padding: 24, borderRadius: 12 }}>
           <h3>Opportunity Summary</h3>
-          {recommendationCards.map(card => (
-            <div key={card.title}>
-              {card.title}: {card.value}
+          {data.recommendationCards.map(card => (
+            <div key={card.title} style={{ marginBottom: 12 }}>
+              <div>{card.title}: <b>{card.value}</b></div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{card.note}</div>
             </div>
           ))}
         </div>
@@ -158,17 +145,17 @@ export default function SAIInsightsPage() {
         <table style={{ width: "100%" }}>
           <thead>
             <tr>
-              {["Area", "Suggestion", "Confidence", "Status"].map(h => (
+              {["Area", "Suggestion", "Signal", "Status"].map(h => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {suggestionTable.map(row => (
+            {data.suggestionTable.map(row => (
               <tr key={row.area}>
                 <td>{row.area}</td>
                 <td>{row.suggestion}</td>
-                <td>{row.confidence}</td>
+                <td>{row.signal}</td>
                 <td>{row.status}</td>
               </tr>
             ))}
