@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -241,16 +241,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register all route files.
+# Public routes: login and registration must be available before authentication.
 app.include_router(auth.router)
-app.include_router(business_pages.router)
-app.include_router(dashboard.router)
-app.include_router(sales.router)
-app.include_router(inventory.router)
-app.include_router(supplier.router)
-app.include_router(data.router)
-app.include_router(chat.router)
-app.include_router(agent.router)
+
+# Protect application API routers with a verified Bearer JWT.
+protected_routers = [
+    business_pages.router,
+    dashboard.router,
+    sales.router,
+    inventory.router,
+    supplier.router,
+    data.router,
+    chat.router,
+    agent.router,
+]
+for protected_router in protected_routers:
+    app.include_router(
+        protected_router,
+        dependencies=[Depends(auth.require_valid_token)],
+    )
 
 
 @app.on_event("startup")
