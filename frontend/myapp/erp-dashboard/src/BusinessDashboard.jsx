@@ -18,7 +18,7 @@ import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
 import ProcurementAgentPage from "./BProcurementAgentPage";
 import ChatWidget from "./ChatWidget";
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href =
@@ -209,7 +209,7 @@ export default function ERPDashboard({
 
     async function loadOverview() {
       try {
-        const response = await fetch(`${API_BASE_URL}/dashboard/overview`);
+        const response = await apiFetch(`/dashboard/overview`);
         if (!response.ok) {
           throw new Error("Dashboard request failed");
         }
@@ -649,10 +649,10 @@ export default function ERPDashboard({
                     <button
                       onClick={async () => {
                         try {
-                          const res = await fetch(`${API_BASE_URL}/api/data/load-demo`, { method: "POST" });
+                          const res = await apiFetch(`/api/data/load-demo`, { method: "POST" });
                           if (res.ok) {
                             const data = await res.json();
-                            const response2 = await fetch(`${API_BASE_URL}/dashboard/overview`);
+                            const response2 = await apiFetch(`/dashboard/overview`);
                             if (response2.ok) {
                               const newData = await response2.json();
                               setOverview({
