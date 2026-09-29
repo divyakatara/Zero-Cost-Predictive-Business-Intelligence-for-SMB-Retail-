@@ -243,6 +243,7 @@ app.add_middleware(
 
 # Register all route files.
 app.include_router(auth.router)
+app.include_router(anomaly.router)
 app.include_router(business_pages.router)
 app.include_router(dashboard.router)
 app.include_router(sales.router)
