@@ -122,6 +122,6 @@ export default function App() {
   }
 
   if (user.role === "supplier") {
-    return <SupplierDashboard user={user} />;
+    return <SupplierDashboard user={user} onLogout={handleLogout} />;
   }
 }
