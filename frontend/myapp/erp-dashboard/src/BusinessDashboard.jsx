@@ -18,7 +18,7 @@ import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
 import ProcurementAgentPage from "./BProcurementAgentPage";
 import ChatWidget from "./ChatWidget";
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href =
@@ -107,6 +107,41 @@ function formatCurrency(value) {
   }).format(value || 0);
 }
 
+// Donut of each top product's share of total revenue; the grey track is all other products.
+function SalesShareDonut({ products }) {
+  const radius = 42;
+  const circumference = 2 * Math.PI * radius;
+  const lengths = products.map((p) => ((p.percentage || 0) / 100) * circumference);
+  const starts = lengths.map((_, i) => lengths.slice(0, i).reduce((sum, l) => sum + l, 0));
+  const totalShare = products.reduce((sum, p) => sum + (p.percentage || 0), 0);
+
+  return (
+    <svg width="110" height="110" viewBox="0 0 110 110" role="img" aria-label="Revenue share of top products">
+      <circle cx="55" cy="55" r={radius} fill="none" stroke={C.borderGreen} strokeWidth="14" />
+      {products.map((p, i) => (
+        <circle
+          key={p.name}
+          cx="55"
+          cy="55"
+          r={radius}
+          fill="none"
+          stroke={p.color}
+          strokeWidth="14"
+          strokeDasharray={`${lengths[i]} ${circumference - lengths[i]}`}
+          strokeDashoffset={-starts[i]}
+          transform="rotate(-90 55 55)"
+        />
+      ))}
+      <text x="55" y="53" textAnchor="middle" fontSize="15" fontWeight="700" fill={C.green}>
+        {Math.round(totalShare)}%
+      </text>
+      <text x="55" y="68" textAnchor="middle" fontSize="8" fill={C.textMuted}>
+        of revenue
+      </text>
+    </svg>
+  );
+}
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -174,7 +209,7 @@ export default function ERPDashboard({
 
     async function loadOverview() {
       try {
-        const response = await fetch(`${API_BASE_URL}/dashboard/overview`);
+        const response = await apiFetch(`/dashboard/overview`);
         if (!response.ok) {
           throw new Error("Dashboard request failed");
         }
@@ -372,21 +407,45 @@ export default function ERPDashboard({
                 fontWeight: 700,
               }}
             >
-              U
+              {(business?.businessName || "B").charAt(0).toUpperCase()}
             </div>
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
                   color: C.sideText,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
                 }}
               >
-                User
+                {business?.businessName || "Business"}
               </div>
-              <div style={{ fontSize: 11, color: C.sideDim }}>Administrator</div>
+              <div style={{ fontSize: 11, color: C.sideDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {business?.email || business?.userEmail || "Business account"}
+              </div>
             </div>
           </div>
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              style={{
+                marginTop: 12,
+                width: "100%",
+                padding: "8px 0",
+                background: "transparent",
+                color: C.sideText,
+                border: `1px solid ${C.sideDim}`,
+                borderRadius: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Log Out
+            </button>
+          )}
         </div>
       </aside>
       <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
@@ -590,10 +649,10 @@ export default function ERPDashboard({
                     <button
                       onClick={async () => {
                         try {
-                          const res = await fetch(`${API_BASE_URL}/api/data/load-demo`, { method: "POST" });
+                          const res = await apiFetch(`/api/data/load-demo`, { method: "POST" });
                           if (res.ok) {
                             const data = await res.json();
-                            const response2 = await fetch(`${API_BASE_URL}/dashboard/overview`);
+                            const response2 = await apiFetch(`/dashboard/overview`);
                             if (response2.ok) {
                               const newData = await response2.json();
                               setOverview({
@@ -979,7 +1038,7 @@ export default function ERPDashboard({
                     marginBottom: 16,
                   }}
                 >
-                  <span style={{ fontSize: 28, color: C.greenMid }}>O</span>
+                  <SalesShareDonut products={topProducts} />
                   <span style={{ fontSize: 12, color: C.textMuted }}>
                     {overview.hasData
                       ? `${topProducts.length} products ranked by sales`

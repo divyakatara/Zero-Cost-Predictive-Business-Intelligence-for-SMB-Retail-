@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE_URL, fetchJson } from "./api";
+import { apiFetch, fetchJson } from "./api";
 
 // Same palette/typography as the rest of the Business dashboard (BInventoryPage.jsx, BusinessDashboard.jsx)
 const C = {
@@ -29,7 +29,7 @@ const statusStyle = {
 };
 
 async function postJson(path, body) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await apiFetch(`${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body || {}),
