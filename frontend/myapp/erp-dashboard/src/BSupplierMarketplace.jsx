@@ -171,6 +171,14 @@ export default function SupplierMarketplacePage({ business }) {
             </div>
             <div style={{ ...syne, fontSize: 14, fontWeight: 700, color: C.text, marginBottom: 4, paddingRight: 60 }}>{supplier.name}</div>
             <div style={{ fontSize: 11, color: C.textDim, marginBottom: 10 }}>{supplier.category}</div>
+            {/* e.g. "2 order(s) placed" when this business has ordered from the supplier */}
+            {supplier.badge && (
+              <div style={{ marginBottom: 10 }}>
+                <span style={{ background: C.greenSubtle, color: C.green, fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20, border: `1px solid ${C.greenBorder}` }}>
+                  {supplier.badge}
+                </span>
+              </div>
+            )}
             <StarRating rating={supplier.rating} />
             <span style={{ fontSize: 11, color: C.textDim, marginLeft: 6 }}>({supplier.reviews})</span>
           </div>
