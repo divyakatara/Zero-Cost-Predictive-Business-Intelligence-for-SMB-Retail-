@@ -91,7 +91,7 @@ export default function LoginPage({ onLogin }) {
         throw new Error("The server did not return a valid login session.");
       }
       setAuthToken(data.access_token);
-      onLogin({ ...data.user, mode });
+      await onLogin({ ...data.user, mode });
     } catch (err) {
       setError(err.message || "Authentication failed. Please check your details.");
     } finally {
@@ -255,7 +255,7 @@ export default function LoginPage({ onLogin }) {
               </label>
               <input
                 type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder={role === "admin" ? "admin@smarterp.com" : "you@business.com"}
+                placeholder={role === "admin" ? "Enter admin email" : "you@business.com"}
                 style={{
                   width: "100%", padding: "11px 14px", borderRadius: 9, fontSize: 13,
                   border: `1px solid ${C.border}`, background: C.bg, color: C.text,

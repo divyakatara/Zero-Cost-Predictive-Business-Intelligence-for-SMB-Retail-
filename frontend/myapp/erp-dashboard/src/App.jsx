@@ -23,7 +23,7 @@ export default function App() {
     return rec;
   }, []);
 
-  // Restore a saved session only after the backend validates its JWT.
+  // Restore a saved session only after the backend validates its JWT and role.
   useEffect(() => {
     let cancelled = false;
     async function restoreSession() {
@@ -33,9 +33,13 @@ export default function App() {
       }
       try {
         const session = await fetchJson("/auth/me");
-        if (!cancelled) handleLogin({ ...session, mode: "login" });
+        if (!session?.role || !["admin", "business", "supplier"].includes(session.role)) {
+          throw new Error("Invalid session role.");
+        }
+        if (!cancelled) applyVerifiedSession({ ...session, mode: "login" });
       } catch {
         setAuthToken(null);
+        if (!cancelled) setUser(null);
       } finally {
         if (!cancelled) setAuthChecking(false);
       }
@@ -54,29 +58,46 @@ export default function App() {
     return () => unsubscribe();
   }, [user, syncBusiness]);
 
-  // Dev query parameter shortcut
-  const isAdminRoute = new URLSearchParams(window.location.search).get("admin") === "1";
-  if (isAdminRoute) return <AdminApprovalPage onLogout={() => (window.location.href = window.location.pathname)} />;
-
-  function handleLogin(userData) {
+  // Only use identity and role returned by the backend's token-verified session.
+  function applyVerifiedSession(userData) {
     setUser(userData);
 
     if (userData.role === "business") {
       const existing = getBusinessByEmail(userData.email);
-
       if (userData.mode === "register") {
-        // Always show registration form for new registrations
         setBusinessRecord(null);
         setBizState("needs-register");
       } else if (existing) {
-        // Returning user with existing record → go straight to dashboard
         setBusinessRecord(existing);
         setBizState("has-record");
       } else {
-        // Logged in but no business record yet → show registration
         setBusinessRecord(null);
         setBizState("needs-register");
       }
+    } else {
+      setBusinessRecord(null);
+      setBizState("idle");
+    }
+  }
+
+  async function handleLogin(loginResponseUser) {
+    try {
+      // Re-check the token with the server instead of trusting client-supplied role data.
+      const verifiedSession = await fetchJson("/auth/me");
+      if (
+        !verifiedSession?.role ||
+        !["admin", "business", "supplier"].includes(verifiedSession.role) ||
+        verifiedSession.role !== loginResponseUser.role
+      ) {
+        throw new Error("The server could not verify this user session.");
+      }
+      applyVerifiedSession({ ...verifiedSession, mode: loginResponseUser.mode || "login" });
+    } catch {
+      setAuthToken(null);
+      setUser(null);
+      setBizState("idle");
+      setBusinessRecord(null);
+      throw new Error("Unable to verify your session. Please sign in again.");
     }
   }
 
