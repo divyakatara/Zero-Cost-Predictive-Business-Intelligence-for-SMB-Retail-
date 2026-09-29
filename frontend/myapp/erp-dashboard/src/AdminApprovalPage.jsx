@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { getBusinesses, approveBusiness, rejectBusiness, revokeBusiness, subscribeBusinessChanges } from "./businessStore";
 import ChatWidget from "./ChatWidget";
+import { apiFetch, getAuthToken } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -135,7 +136,7 @@ export default function AdminApprovalPage({ onLogout }) {
 
           {[
             { label: "Approvals", icon: "📋", badge: pendingCount ? `${pendingCount}` : null },
-            { label: "System Overview", icon: "📊" },
+            { label: "Settings", icon: "⚙️" },
           ].map((item) => {
             const active = activeNav === item.label;
             return (
@@ -183,6 +184,10 @@ export default function AdminApprovalPage({ onLogout }) {
 
       {/* ── Main Workspace ── */}
       <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
+        {activeNav === "Settings" ? (
+          <AdminSettingsPanel onLogout={onLogout} />
+        ) : (
+        <>
 
         {/* Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28 }}>
@@ -375,10 +380,147 @@ export default function AdminApprovalPage({ onLogout }) {
             );
           })}
         </div>
+        </>
+        )}
       </main>
 
       {/* Admin AI Assistant */}
       <ChatWidget role="admin" />
     </div>
+  );
+}
+// Claims from the signed-in admin's token (display only; the server verifies it).
+function readTokenClaims() {
+  try {
+    const payload = getAuthToken()?.split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
+function SettingsCard({ title, subtitle, children }) {
+  return (
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 18 }}>
+      <div style={{ ...syne, fontSize: 16, fontWeight: 700, color: C.text }}>{title}</div>
+      {subtitle && <div style={{ fontSize: 12, color: C.textDim, margin: "4px 0 0" }}>{subtitle}</div>}
+      <div style={{ marginTop: 18 }}>{children}</div>
+    </div>
+  );
+}
+
+function SettingsRow({ label, value }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "11px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
+      <span style={{ color: C.textMuted }}>{label}</span>
+      <span style={{ color: C.text, fontWeight: 600, textAlign: "right" }}>{value}</span>
+    </div>
+  );
+}
+
+function AdminSettingsPanel({ onLogout }) {
+  const claims = readTokenClaims();
+  const [dataStatus, setDataStatus] = useState(null);
+  const [dataError, setDataError] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  async function loadDataStatus() {
+    setLoading(true);
+    try {
+      const res = await apiFetch("/api/data/status");
+      if (!res.ok) throw new Error(`status ${res.status}`);
+      setDataStatus(await res.json());
+      setDataError("");
+    } catch {
+      setDataStatus(null);
+      setDataError("Could not reach the backend to read the data source.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadDataStatus();
+  }, []);
+
+  const expiresAt = claims?.exp ? new Date(claims.exp * 1000) : null;
+
+  return (
+    <>
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+          <div style={{ width: 3, height: 28, background: C.green, borderRadius: 2 }} />
+          <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text }}>Settings</h1>
+        </div>
+        <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12 }}>
+          Administrator account, data source and security
+        </p>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(360px, 1fr))", gap: 18, alignItems: "start" }}>
+        <div>
+          <SettingsCard title="Admin Account" subtitle="The account you are signed in with">
+            <SettingsRow label="Name" value={claims?.name || "System Administrator"} />
+            <SettingsRow label="Email" value={claims?.sub || "—"} />
+            <SettingsRow label="Role" value={(claims?.role || "admin").toUpperCase()} />
+            <SettingsRow
+              label="Session expires"
+              value={expiresAt ? expiresAt.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—"}
+            />
+            <button
+              onClick={onLogout}
+              style={{
+                marginTop: 18, padding: "10px 18px", background: "transparent", color: C.danger,
+                border: `1px solid ${C.danger}`, borderRadius: 8, fontSize: 12, fontWeight: 600,
+                cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+              }}
+            >
+              Sign Out
+            </button>
+          </SettingsCard>
+
+          <SettingsCard title="Security" subtitle="How admin access is protected">
+            <SettingsRow label="Admin credentials" value="Set on the server (ADMIN_EMAIL / ADMIN_PASSWORD)" />
+            <SettingsRow label="Authentication" value="Signed JWT, verified by the server" />
+            <SettingsRow label="Session length" value="60 minutes" />
+            <SettingsRow label="Sessions" value="Separate per browser tab" />
+          </SettingsCard>
+        </div>
+
+        <SettingsCard title="Data Source" subtitle="The dataset the ERP and its ML models are running on">
+          {dataError && (
+            <div style={{ background: C.dangerBg, color: C.danger, borderRadius: 8, padding: "10px 12px", fontSize: 12, marginBottom: 12 }}>
+              {dataError}
+            </div>
+          )}
+          <SettingsRow
+            label="Status"
+            value={
+              loading ? "Checking…" : (
+                <span style={{ color: dataStatus?.connected ? C.green : C.danger }}>
+                  {dataStatus?.connected ? "● Connected" : "● Not connected"}
+                </span>
+              )
+            }
+          />
+          <SettingsRow label="Dataset" value={dataStatus?.dataset_name || "—"} />
+          <SettingsRow label="Sales records" value={dataStatus ? dataStatus.sales_count.toLocaleString("en-IN") : "—"} />
+          <SettingsRow label="Products" value={dataStatus?.products_count ?? "—"} />
+          <SettingsRow label="Suppliers" value={dataStatus?.suppliers_count ?? "—"} />
+          <button
+            onClick={loadDataStatus}
+            disabled={loading}
+            style={{
+              marginTop: 18, padding: "10px 18px", background: C.greenSubtle, color: C.green,
+              border: `1px solid ${C.greenBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600,
+              cursor: loading ? "default" : "pointer", fontFamily: "'IBM Plex Sans', sans-serif",
+            }}
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </SettingsCard>
+      </div>
+    </>
   );
 }
