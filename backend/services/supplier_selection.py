@@ -11,8 +11,12 @@ schema links each Product to at most one Supplier via `Product.supplier_id`
 (see models.py), so there is no per-product supplier catalog with multiple
 eligible bidders. The agent therefore recommends the product's assigned
 supplier when one exists and is viable, and otherwise/also surfaces the
-best globally-ranked alternative suppliers by weighted_score so the user
-still gets a ranked choice rather than a dead end.
+best globally-ranked alternative suppliers so the user still gets a ranked
+choice rather than a dead end.
+
+`ranked_suppliers` is the single supplier ordering shared with the Supplier
+Marketplace page (routes/business_pages.py), so the agent and the page can
+never disagree about which supplier ranks highest.
 """
 
 from typing import Optional
@@ -23,6 +27,22 @@ from sqlalchemy.orm import Session
 import models
 
 MAX_ALTERNATIVES = 5
+
+
+def ranked_suppliers(db: Session) -> list["models.Supplier"]:
+    """All marketplace suppliers, best first: by the scoring pipeline's rank,
+    then weighted_score for unranked suppliers. Shared by the marketplace page
+    and the procurement agent — change the ordering here, not at a call site."""
+    return (
+        db.query(models.Supplier)
+        .filter(models.Supplier.supplier_code.isnot(None))
+        .order_by(
+            models.Supplier.rank.asc().nulls_last(),
+            desc(models.Supplier.weighted_score).nulls_last(),
+            models.Supplier.id.asc(),
+        )
+        .all()
+    )
 
 
 def _supplier_reasons(supplier: "models.Supplier") -> list[str]:
@@ -84,12 +104,7 @@ def recommend_suppliers(db: Session, product: "models.Product") -> dict:
     """
     assigned = _resolve_assigned_supplier(db, product)
 
-    ranked_query = (
-        db.query(models.Supplier)
-        .filter(models.Supplier.supplier_code.isnot(None))
-        .order_by(models.Supplier.weighted_score.isnot(None).desc(), desc(models.Supplier.weighted_score))
-    )
-    ranked_all = ranked_query.all()
+    ranked_all = ranked_suppliers(db)
 
     if not ranked_all:
         return {

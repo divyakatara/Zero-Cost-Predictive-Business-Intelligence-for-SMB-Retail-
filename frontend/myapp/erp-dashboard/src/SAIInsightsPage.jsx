@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 
 /* GOOGLE FONTS */
 const fontLink = document.createElement("link");
@@ -30,47 +31,13 @@ const C = {
 const syne = { fontFamily: "'Syne', sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-const filters = ["Today", "This Week", "This Month"];
-
-/* KPI DATA */
-const kpis = [
-  { label: "Action Items", value: "0", sub: "No suggestions yet", accent: true },
-  { label: "Order Opportunities", value: "0", sub: "No suggestions yet" },
-  { label: "Delivery Risks", value: "0", sub: "No suggestions yet" },
-  { label: "Performance Score", value: "0%", sub: "No suggestions yet" },
-];
-
-/* AI SUGGESTIONS */
-const primarySuggestions = [
-  {
-    title: "No pricing optimization available",
-    reason: "No supplier data available to generate pricing insight.",
-  },
-  {
-    title: "No inventory restock insight",
-    reason: "No stock movement data available.",
-  },
-  {
-    title: "No delivery optimization insight",
-    reason: "No delivery performance data available.",
-  },
-];
-
-/* OPPORTUNITY SUMMARY */
-const recommendationCards = [
-  { title: "Increase order volume", value: "0" },
-  { title: "Improve delivery speed", value: "0" },
-  { title: "Optimize stock supply", value: "0" },
-  { title: "Reduce order delays", value: "0" },
-];
-
-/* SUGGESTION TABLE */
-const suggestionTable = [
-  { area: "Orders", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Inventory", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Delivery", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-  { area: "Performance", suggestion: "No suggestion yet", confidence: "0%", status: "No data" },
-];
+const emptyState = {
+  headerNote: "Smart supplier recommendations · Waiting for backend data",
+  kpis: [],
+  primarySuggestions: [],
+  recommendationCards: [],
+  suggestionTable: [],
+};
 
 const cardStyle = {
   background: C.card,
@@ -96,8 +63,43 @@ const tdStyle = {
   borderBottom: `1px solid ${C.border}`,
 };
 
-export default function SAIInsightsPage() {
-  const [filter, setFilter] = useState("Today");
+export default function SAIInsightsPage({ user }) {
+  const supplierId = user?.supplier_id;
+  const [data, setData] = useState(emptyState);
+  const [loading, setLoading] = useState(Boolean(supplierId));
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!supplierId) return undefined;
+    let ignore = false;
+
+    async function loadData() {
+      setLoading(true);
+      try {
+        const response = await fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/insights`);
+        if (!ignore) {
+          setData(response);
+          setError("");
+        }
+      } catch {
+        if (!ignore) {
+          setData(emptyState);
+          setError("Could not load supplier insights from the backend.");
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    }
+
+    loadData();
+    return () => {
+      ignore = true;
+    };
+  }, [supplierId]);
+
+  const notice = !supplierId
+    ? "This account is not linked to a supplier record, so there is no supplier data to analyse yet."
+    : error || (loading ? "Loading supplier insights…" : "");
 
   return (
     <div
@@ -111,84 +113,57 @@ export default function SAIInsightsPage() {
       }}
     >
       {/* HEADER */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: 18,
-          marginBottom: 28,
-        }}
-      >
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 3,
-                height: 28,
-                background: C.green,
-                borderRadius: 3,
-              }}
-            />
-
-            <h1
-              style={{
-                ...syne,
-                margin: 0,
-                fontSize: 26,
-                fontWeight: 800,
-                color: C.text,
-                letterSpacing: "0.2px",
-              }}
-            >
-              Supplier AI Insights
-            </h1>
-          </div>
-
-          <p
+      <div style={{ marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
             style={{
-              margin: "8px 0 0 13px",
-              color: C.textDim,
-              fontSize: 12,
+              width: 3,
+              height: 28,
+              background: C.green,
+              borderRadius: 3,
+            }}
+          />
+
+          <h1
+            style={{
+              ...syne,
+              margin: 0,
+              fontSize: 26,
+              fontWeight: 800,
+              color: C.text,
+              letterSpacing: "0.2px",
             }}
           >
-            Smart supplier recommendations · No data yet
-          </p>
+            Supplier AI Insights
+          </h1>
         </div>
 
-        {/* FILTERS — existing behavior retained */}
-        <div
+        <p
           style={{
-            display: "flex",
-            background: "#eee8e0",
-            borderRadius: 10,
-            padding: 4,
-            gap: 2,
+            margin: "8px 0 0 13px",
+            color: C.textDim,
+            fontSize: 12,
           }}
         >
-          {filters.map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setFilter(f)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 7,
-                border: "none",
-                background: filter === f ? C.card : "transparent",
-                color: C.text,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                fontSize: 12,
-                fontWeight: filter === f ? 600 : 400,
-              }}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
+          {data.headerNote}
+        </p>
       </div>
+
+      {notice && (
+        <div
+          style={{
+            marginBottom: 18,
+            padding: "12px 14px",
+            background: C.card,
+            border: `1px solid ${C.border}`,
+            borderRadius: 10,
+            color: C.textMuted,
+            fontSize: 13,
+          }}
+        >
+          {notice}
+        </div>
+      )}
 
       {/* KPI CARDS */}
       <div
@@ -199,57 +174,60 @@ export default function SAIInsightsPage() {
           marginBottom: 22,
         }}
       >
-        {kpis.map((kpi) => (
-          <div
-            key={kpi.label}
-            style={{
-              background: kpi.accent ? C.green : C.card,
-              borderRadius: 12,
-              padding: "22px 20px",
-              border: kpi.accent ? "none" : `1px solid ${C.border}`,
-              boxShadow: kpi.accent
-                ? "0 4px 16px rgba(74,122,73,0.15)"
-                : "0 1px 4px rgba(0,0,0,0.04)",
-              color: kpi.accent ? "#fff" : C.text,
-              minWidth: 0,
-            }}
-          >
+        {data.kpis.map((kpi, index) => {
+          const accent = index === 0;
+          return (
             <div
+              key={kpi.label}
               style={{
-                fontSize: 10,
-                color: kpi.accent ? "rgba(255,255,255,0.75)" : C.textDim,
-                letterSpacing: "1.2px",
-                textTransform: "uppercase",
-                fontWeight: 600,
+                background: accent ? C.green : C.card,
+                borderRadius: 12,
+                padding: "22px 20px",
+                border: accent ? "none" : `1px solid ${C.border}`,
+                boxShadow: accent
+                  ? "0 4px 16px rgba(74,122,73,0.15)"
+                  : "0 1px 4px rgba(0,0,0,0.04)",
+                color: accent ? "#fff" : C.text,
+                minWidth: 0,
               }}
             >
-              {kpi.label}
-            </div>
+              <div
+                style={{
+                  fontSize: 10,
+                  color: accent ? "rgba(255,255,255,0.75)" : C.textDim,
+                  letterSpacing: "1.2px",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                }}
+              >
+                {kpi.label}
+              </div>
 
-            <div
-              style={{
-                ...syne,
-                fontSize: 27,
-                fontWeight: 700,
-                lineHeight: 1.3,
-                marginTop: 10,
-                color: kpi.accent ? "#fff" : C.text,
-              }}
-            >
-              {kpi.value}
-            </div>
+              <div
+                style={{
+                  ...syne,
+                  fontSize: 27,
+                  fontWeight: 700,
+                  lineHeight: 1.3,
+                  marginTop: 10,
+                  color: accent ? "#fff" : C.text,
+                }}
+              >
+                {kpi.value}
+              </div>
 
-            <div
-              style={{
-                fontSize: 12,
-                marginTop: 7,
-                color: kpi.accent ? "rgba(255,255,255,0.7)" : C.textDim,
-              }}
-            >
-              {kpi.sub}
+              <div
+                style={{
+                  fontSize: 12,
+                  marginTop: 7,
+                  color: accent ? "rgba(255,255,255,0.7)" : C.textDim,
+                }}
+              >
+                {kpi.sub}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* SUGGESTIONS AND OPPORTUNITY SUMMARY */}
@@ -275,15 +253,28 @@ export default function SAIInsightsPage() {
             Top AI Suggestions
           </h2>
 
-          {primarySuggestions.map((item) => (
+          {data.primarySuggestions.map((item) => (
             <div
-              key={item.title}
+              key={item.subtitle}
               style={{
                 marginBottom: 18,
                 paddingBottom: 14,
                 borderBottom: `1px solid ${C.border}`,
               }}
             >
+              <div
+                style={{
+                  fontSize: 10,
+                  color: C.textDim,
+                  letterSpacing: "1.2px",
+                  textTransform: "uppercase",
+                  fontWeight: 600,
+                  marginBottom: 4,
+                }}
+              >
+                {item.subtitle} · {item.priority}
+              </div>
+
               <div
                 style={{
                   fontSize: 13,
@@ -305,6 +296,10 @@ export default function SAIInsightsPage() {
               >
                 {item.reason}
               </p>
+
+              <div style={{ fontSize: 12, color: C.green, marginTop: 6 }}>
+                {item.action} · {item.impact}
+              </div>
             </div>
           ))}
         </div>
@@ -329,31 +324,38 @@ export default function SAIInsightsPage() {
             Opportunity Summary
           </h2>
 
-          {recommendationCards.map((card) => (
+          {data.recommendationCards.map((card) => (
             <div
               key={card.title}
               style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
                 padding: "12px 0",
                 borderBottom: `1px solid ${C.greenBorder}`,
                 fontSize: 13,
                 color: C.text,
               }}
             >
-              <span>{card.title}</span>
-
-              <strong
+              <div
                 style={{
-                  ...syne,
-                  fontSize: 16,
-                  color: C.green,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
                 }}
               >
-                {card.value}
-              </strong>
+                <span>{card.title}</span>
+
+                <strong
+                  style={{
+                    ...syne,
+                    fontSize: 16,
+                    color: C.green,
+                  }}
+                >
+                  {card.value}
+                </strong>
+              </div>
+
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{card.note}</div>
             </div>
           ))}
         </div>
@@ -375,7 +377,7 @@ export default function SAIInsightsPage() {
           </h2>
 
           <p style={{ fontSize: 12, color: C.textDim, margin: "6px 0 0" }}>
-            AI-generated insights and their current status
+            AI-generated insights and the data signal behind each one
           </p>
         </div>
 
@@ -391,7 +393,7 @@ export default function SAIInsightsPage() {
         >
           <thead>
             <tr>
-              {["Area", "Suggestion", "Confidence", "Status"].map((h) => (
+              {["Area", "Suggestion", "Signal", "Status"].map((h) => (
                 <th key={h} style={thStyle}>
                   {h}
                 </th>
@@ -400,11 +402,11 @@ export default function SAIInsightsPage() {
           </thead>
 
           <tbody>
-            {suggestionTable.map((row) => (
+            {data.suggestionTable.map((row) => (
               <tr key={row.area}>
                 <td style={tdStyle}>{row.area}</td>
                 <td style={tdStyle}>{row.suggestion}</td>
-                <td style={tdStyle}>{row.confidence}</td>
+                <td style={tdStyle}>{row.signal}</td>
                 <td style={tdStyle}>
                   <span
                     style={{

@@ -70,7 +70,7 @@ const inputStyle = (hasError) => ({
   transition: "border-color .15s",
 });
 
-export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
+export default function BRegisterBusinessPage({ user, initialData, onSubmit, onBack }) {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
@@ -95,6 +95,8 @@ export default function BRegisterBusinessPage({ user, onSubmit, onBack }) {
     pan: "",
     registrationNumber: "",
     gstCertificateName: "",
+    // Pre-fill when a rejected business is updating and resubmitting its details
+    ...initialData,
   });
   const [gstCertificateFile, setGstCertificateFile] = useState(null);
   const [fileError, setFileError] = useState("");

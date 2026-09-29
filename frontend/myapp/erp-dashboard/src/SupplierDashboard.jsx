@@ -200,8 +200,8 @@ export default function SupplierDashboard({ user }) {
         {activeNav === "sales" && <SalesPage />}
         {activeNav === "businessmarketplace" && <BusinessMarketplacePage />}
         {activeNav === "analytics" && <SAnalyticsPage />}
-        {activeNav === "aiinsights" && <SAIInsightsPage />}
-        {activeNav === "alerts" && <SAlertsPage />}
+        {activeNav === "aiinsights" && <SAIInsightsPage user={user} />}
+        {activeNav === "alerts" && <SAlertsPage user={user} />}
         {activeNav === "settings" && <SSettingsPage />}
 
         

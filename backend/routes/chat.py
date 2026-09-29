@@ -309,11 +309,10 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
         try:
             genai.configure(api_key=api_key)
             model_candidates = [
-                "gemini-2.0-flash",
-                "gemini-1.5-flash-latest",
-                "gemini-1.5-flash",
-                "gemini-1.5-pro",
-                "gemini-pro",
+                "gemini-flash-latest",
+                "gemini-2.5-flash",
+                "gemini-pro-latest",
+                "gemini-2.5-pro",
             ]
             full_prompt = f"{system_prompt}\n\nUser: {request.message}"
             for model_name in model_candidates:
