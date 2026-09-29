@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import LoginPage from "./LoginPage";
 import BRegisterBusinessPage from "./BRegisterBusinessPage";
 import AdminApprovalPage from "./AdminApprovalPage";
@@ -11,17 +11,9 @@ import { fetchJson, getAuthToken, setAuthToken } from "./api";
 export default function App() {
   const [user, setUser] = useState(null);
   const [authChecking, setAuthChecking] = useState(true);
-  // "idle" | "needs-register" | "has-record"
+  // "idle" | "loading" | "needs-register" | "has-record"
   const [bizState, setBizState] = useState("idle");
   const [businessRecord, setBusinessRecord] = useState(null);
-
-  // Keep business record in sync with cross-tab changes
-  const syncBusiness = useCallback((email) => {
-    if (!email) return null;
-    const rec = getBusinessByEmail(email);
-    setBusinessRecord(rec || null);
-    return rec;
-  }, []);
 
   // Restore a saved session only after the backend validates its JWT and role.
   useEffect(() => {
@@ -36,7 +28,7 @@ export default function App() {
         if (!session?.role || !["admin", "business", "supplier"].includes(session.role)) {
           throw new Error("Invalid session role.");
         }
-        if (!cancelled) applyVerifiedSession({ ...session, mode: "login" });
+        if (!cancelled) await applyVerifiedSession({ ...session, mode: "login" });
       } catch {
         setAuthToken(null);
         if (!cancelled) setUser(null);
@@ -48,42 +40,49 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Real-time subscription for cross-tab approvals
+  // Real-time updates when an admin approves/rejects in another tab. Reads the
+  // local cache only: re-fetching here would re-save the cache and re-fire this event.
   useEffect(() => {
-    const unsubscribe = subscribeBusinessChanges(() => {
-      if (user?.role === "business") {
-        syncBusiness(user.email);
+    if (user?.role !== "business" || !user?.email) return undefined;
+    const email = user.email.toLowerCase();
+    const unsubscribe = subscribeBusinessChanges((businesses) => {
+      const record = businesses.find((b) => (b.userEmail || "").toLowerCase() === email);
+      if (record) {
+        setBusinessRecord(record);
+        setBizState("has-record");
       }
     });
-    return () => unsubscribe();
-  }, [user, syncBusiness]);
+    return unsubscribe;
+  }, [user?.role, user?.email]);
 
   // Only use identity and role returned by the backend's token-verified session.
-  function applyVerifiedSession(userData) {
+  async function applyVerifiedSession(userData) {
     setUser(userData);
 
-    if (userData.role === "business") {
-      const existing = getBusinessByEmail(userData.email);
-      if (userData.mode === "register") {
-        setBusinessRecord(null);
-        setBizState("needs-register");
-      } else if (existing) {
-        setBusinessRecord(existing);
-        setBizState("has-record");
-      } else {
-        setBusinessRecord(null);
-        setBizState("needs-register");
-      }
-    } else {
+    if (userData.role !== "business") {
       setBusinessRecord(null);
       setBizState("idle");
+      return;
     }
+
+    if (userData.mode === "register") {
+      // A brand-new account always starts with the business details form.
+      setBusinessRecord(null);
+      setBizState("needs-register");
+      return;
+    }
+
+    setBizState("loading");
+    const existing = await getBusinessByEmail(userData.email);
+    setBusinessRecord(existing || null);
+    setBizState(existing ? "has-record" : "needs-register");
   }
 
   async function handleLogin(loginResponseUser) {
+    let verifiedSession;
     try {
       // Re-check the token with the server instead of trusting client-supplied role data.
-      const verifiedSession = await fetchJson("/auth/me");
+      verifiedSession = await fetchJson("/auth/me");
       if (
         !verifiedSession?.role ||
         !["admin", "business", "supplier"].includes(verifiedSession.role) ||
@@ -91,7 +90,6 @@ export default function App() {
       ) {
         throw new Error("The server could not verify this user session.");
       }
-      applyVerifiedSession({ ...verifiedSession, mode: loginResponseUser.mode || "login" });
     } catch {
       setAuthToken(null);
       setUser(null);
@@ -99,11 +97,13 @@ export default function App() {
       setBusinessRecord(null);
       throw new Error("Unable to verify your session. Please sign in again.");
     }
+    await applyVerifiedSession({ ...verifiedSession, mode: loginResponseUser.mode || "login" });
   }
 
-  function handleBusinessDetailsSubmit(businessData) {
+  // Saves the registration to the backend; errors propagate so the form can show them.
+  async function handleBusinessDetailsSubmit(businessData) {
     if (!user) return;
-    const record = submitBusiness(user.email, businessData);
+    const record = await submitBusiness(user.email, businessData);
     setBusinessRecord(record);
     setBizState("has-record");
   }
@@ -128,15 +128,8 @@ export default function App() {
   }
 
   if (user.role === "business") {
-    if (bizState === "needs-register") {
-      return (
-        <BRegisterBusinessPage
-          user={user}
-          initialData={businessRecord?.status === "rejected" ? businessRecord : undefined}
-          onSubmit={handleBusinessDetailsSubmit}
-          onBack={handleLogout}
-        />
-      );
+    if (bizState === "loading") {
+      return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>Loading your business profile...</div>;
     }
 
     if (bizState === "has-record" && businessRecord) {
@@ -160,10 +153,11 @@ export default function App() {
       );
     }
 
-    // Fallback: still loading or unknown state → show registration
+    // No registration yet (or resubmitting after a rejection)
     return (
       <BRegisterBusinessPage
         user={user}
+        initialData={businessRecord?.status === "rejected" ? businessRecord : undefined}
         onSubmit={handleBusinessDetailsSubmit}
         onBack={handleLogout}
       />
@@ -173,4 +167,6 @@ export default function App() {
   if (user.role === "supplier") {
     return <SupplierDashboard user={user} onLogout={handleLogout} />;
   }
+
+  return null;
 }

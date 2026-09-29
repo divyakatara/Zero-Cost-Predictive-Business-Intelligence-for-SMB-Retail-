@@ -73,6 +73,7 @@ const inputStyle = (hasError) => ({
 export default function BRegisterBusinessPage({ user, initialData, onSubmit, onBack }) {
   const [step, setStep] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [errors, setErrors] = useState({});
   const topRef = useRef(null);
   const [form, setForm] = useState({
@@ -168,7 +169,7 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (!validateStep()) return;
     if (step < steps.length - 1) {
       setErrors({});
@@ -177,12 +178,15 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
       topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       return;
     }
-    // Final step: submit to parent (App.jsx → saves via businessStore → navigates to dashboard)
+    // Final step: submit to parent (App.jsx → saves via businessStore/API → shows status page)
     setSubmitting(true);
+    setSubmitError("");
     try {
-      onSubmit?.(form);
-    } catch {
+      await onSubmit?.(form);
+    } catch (err) {
       setSubmitting(false);
+      setSubmitError(err?.message || "Registration could not be submitted. Please try again.");
+      topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   };
 
@@ -247,6 +251,18 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
             }}>
               <span style={{ fontSize: 16 }}>⚠</span>
               Please fill in all required fields highlighted below ({Object.keys(visibleErrors).length} missing).
+            </div>
+          )}
+
+          {/* Server-side submission error */}
+          {submitError && (
+            <div style={{
+              background: "#fdf0f0", border: `1px solid ${C.danger}`, borderRadius: 10,
+              padding: "12px 16px", marginBottom: 20, fontSize: 12,
+              color: C.danger, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+            }}>
+              <span style={{ fontSize: 16 }}>⚠</span>
+              {submitError}
             </div>
           )}
 

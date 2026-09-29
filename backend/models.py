@@ -210,3 +210,59 @@ class AgentAction(Base):
 
     purchase_order = relationship("PurchaseOrder", back_populates="actions")
     product = relationship("Product")
+
+class Business(Base):
+    """Stores business registrations submitted by business users."""
+
+    __tablename__ = "businesses"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    owner_user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    name = Column(String, nullable=False)
+    business_type = Column(String, nullable=False)
+    category = Column(String, nullable=False)
+
+    year_established = Column(Integer, nullable=True)
+    employee_count = Column(Integer, nullable=True)
+    description = Column(Text, nullable=True)
+
+    address_line1 = Column(String, nullable=False)
+    address_line2 = Column(String, nullable=True)
+    city = Column(String, nullable=False)
+    state = Column(String, nullable=False)
+    pincode = Column(String, nullable=False)
+    country = Column(String, nullable=False, default="India")
+
+    phone = Column(String, nullable=False)
+    email = Column(String, nullable=False)
+    website = Column(String, nullable=True)
+
+    registration_number = Column(String, nullable=False)
+    gstin = Column(String, nullable=True)
+    pan = Column(String, nullable=True)
+
+    # GST file handling is intentionally out of scope for TASK-06.
+    gst_certificate_name = Column(String, nullable=True)
+
+    status = Column(
+        String,
+        nullable=False,
+        default="pending",
+        index=True,
+    )
+
+    submitted_at = Column(
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+    )
+
+    reviewed_at = Column(DateTime, nullable=True)
+    rejection_reason = Column(Text, nullable=True)

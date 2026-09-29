@@ -1,5 +1,10 @@
 // Frontend persistence & sync for business registrations.
 
+import {
+  registerBusinessApi,
+  fetchBusinessByEmailApi,
+} from "./api";
+
 const STORAGE_KEY = "smarterp_businesses";
 
 export function getBusinesses() {
@@ -16,24 +21,62 @@ function saveBusinesses(list) {
   window.dispatchEvent(new CustomEvent("smarterp_businesses_updated"));
 }
 
-export function getBusinessByEmail(email) {
+const sameEmail = (a, b) => (a || "").toLowerCase() === (b || "").toLowerCase();
+
+function findLocal(email) {
+  return getBusinesses().find((b) => sameEmail(b.userEmail || b.email, email)) || null;
+}
+
+// Insert or replace this owner's record without dropping other businesses,
+// which the admin page (same browser) still lists from this cache.
+function upsertLocal(record) {
+  const others = getBusinesses().filter((b) => !sameEmail(b.userEmail, record.userEmail));
+  saveBusinesses([...others, record]);
+}
+
+// Backend timestamps are UTC without a zone suffix.
+const toTime = (value) => (value ? new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`).getTime() : 0);
+
+export async function getBusinessByEmail(email) {
   if (!email) return null;
-  return getBusinesses().find((b) => (b.userEmail || b.email || "").toLowerCase() === email.toLowerCase()) || null;
+
+  let business;
+  try {
+    business = await fetchBusinessByEmailApi(email);
+  } catch {
+    // Fallback to existing localStorage data if the API is unavailable
+    return findLocal(email);
+  }
+  if (!business) return null;
+
+  const local = findLocal(email);
+  // userEmail is the owner's login email: the admin page approves/rejects by it.
+  const merged = { ...local, ...business, userEmail: email };
+
+  // Approve/reject is still recorded in this browser until the admin API
+  // (TASK-07) exists, so an admin decision made after the latest submission wins.
+  if (local?.reviewedAt && !business.reviewedAt && toTime(local.reviewedAt) >= toTime(business.submittedAt)) {
+    merged.status = local.status;
+    merged.reviewedAt = local.reviewedAt;
+    merged.rejectionReason = local.rejectionReason;
+  }
+
+  upsertLocal(merged);
+  return merged;
 }
 
 // Called right after BRegisterBusinessPage is submitted
-export function submitBusiness(userEmail, formData) {
-  const businesses = getBusinesses();
+export async function submitBusiness(userEmail, formData) {
+  const saved = await registerBusinessApi(formData, userEmail);
+
+  // Keep a local copy for the admin page, including the uploaded certificate
+  // (only its name is stored on the server).
   const record = {
-    ...formData,
-    userEmail: userEmail || formData.email,
-    status: "pending", // "pending" | "approved" | "rejected"
-    submittedAt: new Date().toISOString(),
-    reviewedAt: null,
-    rejectionReason: null,
+    ...saved,
+    userEmail,
+    gstCertificateData: formData.gstCertificateData || null,
   };
-  const updated = [...businesses.filter((b) => (b.userEmail || "").toLowerCase() !== (userEmail || "").toLowerCase()), record];
-  saveBusinesses(updated);
+  upsertLocal(record);
   return record;
 }
 

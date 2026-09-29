@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -145,3 +145,66 @@ class SupplierDatasetResponse(BaseModel):
     stock_status: Optional[str] = None
     stock_utilization_rate: Optional[int] = None
     supplier_risk_score: Optional[int] = None
+
+class BusinessRegisterCreate(BaseModel):
+    """Payload used when a business user submits registration."""
+
+    user_email: Optional[str] = None
+    businessName: Optional[str] = None
+    businessType: Optional[str] = None
+    category: Optional[str] = None
+
+    yearEstablished: Optional[int] = None
+    employeeCount: Optional[int] = None
+    description: Optional[str] = None
+    
+    addressLine1: Optional[str] = None
+    addressLine2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    pincode: Optional[str] = None
+    country: str = "India"
+
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    website: Optional[str] = None
+    
+    registrationNumber: Optional[str] = None
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+
+    gstCertificateName: Optional[str] = None
+
+
+class BusinessResponse(BaseModel):
+    id: int
+    owner_user_id: int
+
+    businessName: str
+    businessType: str
+    category: str
+
+    yearEstablished: Optional[int] = None
+    employeeCount: Optional[int] = None
+    description: Optional[str] = None
+
+    addressLine1: str
+    addressLine2: Optional[str] = None
+    city: str
+    state: str
+    pincode: str
+    country: str
+
+    phone: str
+    email: str
+    website: Optional[str] = None
+
+    registrationNumber: str
+    gstin: Optional[str] = None
+    pan: Optional[str] = None
+    gstCertificateName: Optional[str] = None
+
+    status: str
+    submittedAt: datetime
+    reviewedAt: Optional[datetime] = None
+    rejectionReason: Optional[str] = None

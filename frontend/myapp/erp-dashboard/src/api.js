@@ -1,13 +1,15 @@
 export const API_BASE_URL = "http://127.0.0.1:8000";
 const TOKEN_KEY = "smarterp_access_token";
 
+// Per-tab storage: each tab keeps its own session (e.g. a business tab and an
+// admin tab side by side), and logging out in one tab doesn't sign out the other.
 export function getAuthToken() {
-  return localStorage.getItem(TOKEN_KEY);
+  return sessionStorage.getItem(TOKEN_KEY);
 }
 
 export function setAuthToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) sessionStorage.setItem(TOKEN_KEY, token);
+  else sessionStorage.removeItem(TOKEN_KEY);
 }
 
 export async function apiFetch(path, options = {}) {
@@ -39,4 +41,51 @@ export function formatCurrency(value) {
     currency: "INR",
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function errorMessage(data, fallback) {
+  if (typeof data?.detail === "string") return data.detail;
+  if (data?.detail?.message) return data.detail.message;
+  return fallback;
+}
+
+// Optional numeric form fields arrive as "" when left blank; the API expects a number or null.
+function toNumberOrNull(value) {
+  if (value === "" || value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+export async function registerBusinessApi(formData, userEmail) {
+  // The certificate file itself stays in the browser; the backend stores its name only.
+  // eslint-disable-next-line no-unused-vars
+  const { gstCertificateData, ...fields } = formData;
+  const response = await apiFetch("/business/register", {
+    method: "POST",
+    body: JSON.stringify({
+      ...fields,
+      user_email: userEmail,
+      yearEstablished: toNumberOrNull(fields.yearEstablished),
+      employeeCount: toNumberOrNull(fields.employeeCount),
+    }),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(errorMessage(data, "Business registration failed."));
+  }
+  return data;
+}
+
+export async function fetchBusinessByEmailApi(email) {
+  const response = await apiFetch(`/business/by-email?email=${encodeURIComponent(email)}`);
+  if (response.status === 404) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(errorMessage(data, "Unable to fetch business registration."));
+  }
+  return data;
 }
