@@ -5,64 +5,151 @@ import AdminApprovalPage from "./AdminApprovalPage";
 import BusinessDashboard from "./BusinessDashboard";
 import BusinessStatusPage from "./BusinessStatusPage";
 import SupplierDashboard from "./SupplierDashboard";
-import { getBusinessByEmail, submitBusiness, subscribeBusinessChanges } from "./businessStore";
+
+import {
+  getBusinessByEmail,
+  submitBusiness,
+  subscribeBusinessChanges,
+} from "./businessStore";
 
 export default function App() {
   const [user, setUser] = useState(null);
+
   // "idle" | "needs-register" | "has-record"
   const [bizState, setBizState] = useState("idle");
   const [businessRecord, setBusinessRecord] = useState(null);
 
-  // Keep business record in sync with cross-tab changes
-  const syncBusiness = useCallback((email) => {
-    if (!email) return null;
-    const rec = getBusinessByEmail(email);
-    setBusinessRecord(rec || null);
-    return rec;
+  // Keep business record synchronized with the backend
+  const syncBusiness = useCallback(async (email) => {
+    if (!email) {
+      setBusinessRecord(null);
+      setBizState("needs-register");
+      return null;
+    }
+
+    try {
+      const record = await getBusinessByEmail(email);
+
+      if (record) {
+        setBusinessRecord(record);
+        setBizState("has-record");
+      } else {
+        setBusinessRecord(null);
+        setBizState("needs-register");
+      }
+
+      return record;
+    } catch (error) {
+      console.error("Failed to fetch business:", error);
+
+      setBusinessRecord(null);
+      setBizState("needs-register");
+
+      return null;
+    }
   }, []);
 
-  // Real-time subscription for cross-tab approvals
+  // Load the business record whenever a business user is logged in
   useEffect(() => {
-    const unsubscribe = subscribeBusinessChanges(() => {
-      if (user?.role === "business") {
-        syncBusiness(user.email);
+    if (user?.role === "business" && user?.email) {
+      syncBusiness(user.email);
+    }
+  }, [user?.role, user?.email, syncBusiness]);
+
+  // Keep existing localStorage/cross-tab synchronization
+  useEffect(() => {
+    if (user?.role !== "business" || !user?.email) {
+      return;
+    }
+
+    const unsubscribe = subscribeBusinessChanges((businesses) => {
+      const email = user.email.toLowerCase();
+
+      const record =
+        businesses.find(
+          (business) =>
+            (business.userEmail || business.email || "").toLowerCase() ===
+            email
+        ) || null;
+
+      if (record) {
+        setBusinessRecord(record);
+        setBizState("has-record");
       }
     });
-    return () => unsubscribe();
-  }, [user, syncBusiness]);
 
-  // Dev query parameter shortcut
-  const isAdminRoute = new URLSearchParams(window.location.search).get("admin") === "1";
-  if (isAdminRoute) return <AdminApprovalPage onLogout={() => (window.location.href = window.location.pathname)} />;
+    return unsubscribe;
+  }, [user?.role, user?.email]);
 
-  function handleLogin(userData) {
+  // Dev/admin query parameter shortcut
+  const isAdminRoute =
+    new URLSearchParams(window.location.search).get("admin") === "1";
+
+  const isAdminRoutePath =
+    window.location.pathname === "/admin" ||
+    window.location.pathname === "/admin/";
+
+  if (isAdminRoute || isAdminRoutePath) {
+    return (
+      <AdminApprovalPage
+        onLogout={() => {
+          window.location.href = "/";
+        }}
+      />
+    );
+  }
+
+  // --------------------------------------------------
+  // Login
+  // --------------------------------------------------
+
+  async function handleLogin(userData) {
     setUser(userData);
 
-    if (userData.role === "business") {
-      const existing = getBusinessByEmail(userData.email);
+    if (userData?.role === "business") {
+      const existing = await syncBusiness(userData.email);
 
       if (userData.mode === "register") {
-        // Always show registration form for new registrations
+        // New registration should always start with the registration form.
         setBusinessRecord(null);
         setBizState("needs-register");
       } else if (existing) {
-        // Returning user with existing record → go straight to dashboard
+        // Existing business user
         setBusinessRecord(existing);
         setBizState("has-record");
       } else {
-        // Logged in but no business record yet → show registration
+        // Logged in but no business registration exists.
         setBusinessRecord(null);
         setBizState("needs-register");
       }
     }
   }
 
-  function handleBusinessDetailsSubmit(businessData) {
-    if (!user) return;
-    const record = submitBusiness(user.email, businessData);
-    setBusinessRecord(record);
-    setBizState("has-record");
+  // --------------------------------------------------
+  // Business Registration
+  // --------------------------------------------------
+
+  async function handleBusinessDetailsSubmit(businessData) {
+    if (!user) {
+      return;
+    }
+
+    try {
+      const record = await submitBusiness(user.email, businessData);
+
+      setBusinessRecord(record);
+      setBizState("has-record");
+    } catch (error) {
+      console.error("Business registration failed:", error);
+
+      // BRegisterBusinessPage handles and displays this error.
+      throw error;
+    }
   }
+
+  // --------------------------------------------------
+  // Logout
+  // --------------------------------------------------
 
   function handleLogout() {
     setUser(null);
@@ -70,29 +157,41 @@ export default function App() {
     setBusinessRecord(null);
   }
 
-  // ── Routing ──────────────────────────────────────────────
+  // --------------------------------------------------
+  // Routing
+  // --------------------------------------------------
 
-  if (!user) return <LoginPage onLogin={handleLogin} />;
+  if (!user) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
+  // Admin
   if (user.role === "admin") {
     return <AdminApprovalPage onLogout={handleLogout} />;
   }
 
+  // Business
   if (user.role === "business") {
+    // No business registration yet
     if (bizState === "needs-register") {
       return (
         <BRegisterBusinessPage
           user={user}
-          initialData={businessRecord?.status === "rejected" ? businessRecord : undefined}
+          initialData={
+            businessRecord?.status === "rejected"
+              ? businessRecord
+              : undefined
+          }
           onSubmit={handleBusinessDetailsSubmit}
-          onBack={handleLogout}
+          onBack={() => setBizState("needs-register")}
+          onLogout={handleLogout}
         />
       );
     }
 
+    // Existing business record
     if (bizState === "has-record" && businessRecord) {
-      // Only approved businesses reach the dashboard; pending/rejected see their status.
-      // The cross-tab subscription above re-renders this as soon as an admin decides.
+      // Only approved businesses can access the dashboard.
       if (businessRecord.status !== "approved") {
         return (
           <BusinessStatusPage
@@ -111,17 +210,21 @@ export default function App() {
       );
     }
 
-    // Fallback: still loading or unknown state → show registration
+    // Fallback while business state is loading/unknown
     return (
       <BRegisterBusinessPage
         user={user}
         onSubmit={handleBusinessDetailsSubmit}
         onBack={handleLogout}
+        onLogout={handleLogout}
       />
     );
   }
 
+  // Supplier
   if (user.role === "supplier") {
     return <SupplierDashboard user={user} />;
   }
+
+  return null;
 }

@@ -1,5 +1,10 @@
 // Frontend persistence & sync for business registrations.
 
+import {
+  registerBusinessApi,
+  fetchBusinessByEmailApi,
+} from "./api";
+
 const STORAGE_KEY = "smarterp_businesses";
 
 export function getBusinesses() {
@@ -16,24 +21,35 @@ function saveBusinesses(list) {
   window.dispatchEvent(new CustomEvent("smarterp_businesses_updated"));
 }
 
-export function getBusinessByEmail(email) {
+export async function getBusinessByEmail(email) {
   if (!email) return null;
-  return getBusinesses().find((b) => (b.userEmail || b.email || "").toLowerCase() === email.toLowerCase()) || null;
+
+  try {
+    const business = await fetchBusinessByEmailApi(email);
+
+    if (business) {
+      saveBusinesses([business]);
+      return business;
+    }
+
+    return null;
+  } catch (error) {
+    // Fallback to existing localStorage data if the API is unavailable
+    return getBusinesses().find(
+      (b) =>
+        (b.userEmail || b.email || "").toLowerCase() ===
+        email.toLowerCase()
+    ) || null;
+  }
 }
 
 // Called right after BRegisterBusinessPage is submitted
-export function submitBusiness(userEmail, formData) {
-  const businesses = getBusinesses();
-  const record = {
-    ...formData,
-    userEmail: userEmail || formData.email,
-    status: "pending", // "pending" | "approved" | "rejected"
-    submittedAt: new Date().toISOString(),
-    reviewedAt: null,
-    rejectionReason: null,
-  };
-  const updated = [...businesses.filter((b) => (b.userEmail || "").toLowerCase() !== (userEmail || "").toLowerCase()), record];
-  saveBusinesses(updated);
+export async function submitBusiness(userEmail, formData) {
+  const record = await registerBusinessApi(formData, userEmail);
+
+  // Keep localStorage as a local cache for the existing frontend
+  saveBusinesses([record]);
+
   return record;
 }
 
