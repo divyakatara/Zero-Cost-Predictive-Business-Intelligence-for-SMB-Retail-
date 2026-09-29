@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import "./ChatWidget.css";
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 const BUSINESS_PROMPTS = [
   "What are my top-selling products?",
@@ -55,7 +55,7 @@ export default function ChatWidget({ role = "business" }) {
     setIsLoading(true);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/chat`, {
+      const res = await apiFetch(`/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text, role }),

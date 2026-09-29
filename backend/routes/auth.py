@@ -179,7 +179,12 @@ def admin_login(user: schemas.UserLogin):
 
 
 @router.get("/me")
-def get_me(current_user: dict = Depends(get_current_user)):
+def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    # Return the same shape as the login response so a restored session keeps
+    # fields like supplier_id (the supplier pages load their data by it).
+    db_user = db.query(models.User).filter(models.User.email == current_user["sub"]).first()
+    if db_user:
+        return serialize_user(db_user)
     return {
         "id": current_user.get("user_id"),
         "name": current_user.get("name"),

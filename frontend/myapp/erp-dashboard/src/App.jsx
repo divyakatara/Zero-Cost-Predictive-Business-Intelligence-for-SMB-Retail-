@@ -3,6 +3,7 @@ import LoginPage from "./LoginPage";
 import BRegisterBusinessPage from "./BRegisterBusinessPage";
 import AdminApprovalPage from "./AdminApprovalPage";
 import BusinessDashboard from "./BusinessDashboard";
+import BusinessStatusPage from "./BusinessStatusPage";
 import SupplierDashboard from "./SupplierDashboard";
 import { getBusinessByEmail, submitBusiness, subscribeBusinessChanges } from "./businessStore";
 import { fetchJson, getAuthToken, setAuthToken } from "./api";
@@ -110,6 +111,7 @@ export default function App() {
       return (
         <BRegisterBusinessPage
           user={user}
+          initialData={businessRecord?.status === "rejected" ? businessRecord : undefined}
           onSubmit={handleBusinessDetailsSubmit}
           onBack={handleLogout}
         />
@@ -117,6 +119,18 @@ export default function App() {
     }
 
     if (bizState === "has-record" && businessRecord) {
+      // Only approved businesses reach the dashboard; pending/rejected see their status.
+      // The cross-tab subscription above re-renders this as soon as an admin decides.
+      if (businessRecord.status !== "approved") {
+        return (
+          <BusinessStatusPage
+            business={businessRecord}
+            onRetry={() => setBizState("needs-register")}
+            onLogout={handleLogout}
+          />
+        );
+      }
+
       return (
         <BusinessDashboard
           business={businessRecord}
@@ -136,6 +150,6 @@ export default function App() {
   }
 
   if (user.role === "supplier") {
-    return <SupplierDashboard user={user} />;
+    return <SupplierDashboard user={user} onLogout={handleLogout} />;
   }
 }

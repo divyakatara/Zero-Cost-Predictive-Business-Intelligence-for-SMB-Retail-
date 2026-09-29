@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -55,7 +55,7 @@ export default function BSettingsPage({
 
   async function fetchDataStatus() {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/data/status`);
+      const res = await apiFetch(`/api/data/status`);
       if (res.ok) setDataStatus(await res.json());
     } catch { /* backend may be offline */ }
   }
@@ -64,7 +64,7 @@ export default function BSettingsPage({
     setDataLoading("demo");
     setDataMsg({ text: "", type: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/api/data/load-demo`, { method: "POST" });
+      const res = await apiFetch(`/api/data/load-demo`, { method: "POST" });
       const body = await res.json();
       if (res.ok) {
         setDataMsg({ text: `✓ Demo dataset loaded: ${body.sales_count} sales, ${body.products_count} products, ${body.suppliers_count} suppliers.`, type: "success" });
@@ -84,7 +84,7 @@ export default function BSettingsPage({
     setDataLoading("clear");
     setDataMsg({ text: "", type: "" });
     try {
-      const res = await fetch(`${API_BASE_URL}/api/data/clear`, { method: "POST" });
+      const res = await apiFetch(`/api/data/clear`, { method: "POST" });
       const body = await res.json();
       if (res.ok) {
         setDataMsg({ text: "✓ All business data cleared. Dashboard will show empty state.", type: "warn" });
@@ -107,7 +107,7 @@ export default function BSettingsPage({
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/data/import`, { method: "POST", body: formData });
+      const res = await apiFetch(`/api/data/import`, { method: "POST", body: formData });
       const body = await res.json();
       if (res.ok) {
         setDataMsg({ text: `✓ ${body.message}`, type: "success" });

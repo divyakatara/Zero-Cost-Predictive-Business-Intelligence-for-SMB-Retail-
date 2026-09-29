@@ -54,7 +54,7 @@ const statusStyle = {
   critical: { bg: "#fdf0f0", color: "#8a2020", dot: "#c83030", label: "Critical" },
 };
 
-export default function SupplierDashboard({ user }) {
+export default function SupplierDashboard({ user, onLogout }) {
   const [activeNav, setActiveNav] = useState("dashboard");
   const [requirements, setRequirements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -131,6 +131,11 @@ export default function SupplierDashboard({ user }) {
               <div style={{ fontSize: 11, color: C.sideDim }}>{user?.supplier_id || "Supplier"}</div>
             </div>
           </div>
+          {onLogout && (
+            <button onClick={onLogout} style={{ marginTop: 12, width: "100%", padding: "8px 0", background: "transparent", color: C.greenLight, border: `1px solid ${C.sideDim}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+              Log Out
+            </button>
+          )}
         </div>
       </aside>
 

@@ -232,20 +232,25 @@ run_simple_migrations()
 
 app = FastAPI(title="Smart ERP Backend")
 
-# Allow frontend requests during development.
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite dev server (erp-dashboard)
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",  # in case myapp (CRA) is also used
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 # Public routes: login and registration must be available before authentication.
 app.include_router(auth.router)
 
 # Protect application API routers with a verified Bearer JWT.
 protected_routers = [
+    anomaly.router,
     business_pages.router,
     dashboard.router,
     sales.router,

@@ -1,9 +1,18 @@
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-# PostgreSQL database URL.
-# Replace YOUR_PASSWORD with your actual PostgreSQL password before running.
-DATABASE_URL = "postgresql://postgres:pwd-56@localhost:5432/smart_erp_users"
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
+# PostgreSQL database URL. Set DATABASE_URL in backend/.env (gitignored) so each
+# developer can use their own local password; see backend/.env.example.
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:pwd-56@localhost:5432/smart_erp_users",
+)
 
 # SQLAlchemy engine connects FastAPI to PostgreSQL.
 engine = create_engine(DATABASE_URL)
