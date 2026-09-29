@@ -11,3 +11,4 @@ scikit-learn
 pandas
 numpy
 openpyxl
+PyJWT>=2.8.0

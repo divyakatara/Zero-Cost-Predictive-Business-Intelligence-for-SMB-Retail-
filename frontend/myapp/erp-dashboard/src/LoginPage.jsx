@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { API_BASE_URL } from "./api";
+import { fetchJson, setAuthToken } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -30,6 +30,8 @@ export default function LoginPage({ onLogin }) {
   const [mode,     setMode]     = useState("login");
   const [role,     setRole]     = useState("business");
   const [name,     setName]     = useState("");
+  const [gstin,    setGstin]    = useState("");
+  const [supplierId, setSupplierId] = useState("");
   const [email,    setEmail]    = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -40,69 +42,56 @@ export default function LoginPage({ onLogin }) {
     e.preventDefault();
     setError("");
 
-    if (mode === "register" && !role) {
-      setError("Please select your account type.");
+    if (!email.trim() || !password) {
+      setError("Please fill in your email and password.");
       return;
     }
-    if (!email || !password) {
-      setError("Please fill in all fields.");
-      return;
-    }
-    if (mode === "register" && !name) {
+    if (mode === "register" && !name.trim()) {
       setError("Please enter your name.");
+      return;
+    }
+    if (mode === "register" && !gstin.trim()) {
+      setError("GSTIN is required for registration.");
       return;
     }
 
     setLoading(true);
-
     try {
-      if (role === "admin") {
-        // Attempt Admin Login API endpoint
-        const res = await fetch(`${API_BASE_URL}/auth/admin-login`, {
+      let data;
+      if (mode === "register") {
+        if (role === "admin") throw new Error("Admin registration is not available.");
+        await fetchJson("/auth/register", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify({
+            name: name.trim(),
+            email: email.trim(),
+            password,
+            role,
+            gstin: gstin.trim(),
+            supplier_id: role === "supplier" ? (supplierId.trim() || null) : null,
+          }),
         });
-
-        if (res.ok) {
-          const data = await res.json();
-          onLogin({ ...data.user, mode });
-          return;
-        } else {
-          // Check local env fallback if backend API offline
-          if (email.toLowerCase() === "admin@smarterp.com" && password === "admin123") {
-            onLogin({ name: "System Administrator", email, role: "admin", mode });
-            return;
-          }
-          const errData = await res.json().catch(() => ({}));
-          throw new Error(errData.detail || "Invalid admin credentials.");
-        }
+        data = await fetchJson(`/auth/login?role=${encodeURIComponent(role)}`, {
+          method: "POST",
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+      } else if (role === "admin") {
+        data = await fetchJson("/auth/admin-login", {
+          method: "POST",
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+      } else {
+        data = await fetchJson(`/auth/login?role=${encodeURIComponent(role)}`, {
+          method: "POST",
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
       }
 
-      if (role === "supplier" && mode === "login") {
-        // Supplier accounts live in the backend so the user carries its linked supplier_id
-        let res;
-        try {
-          res = await fetch(`${API_BASE_URL}/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-          });
-        } catch {
-          res = null; // Backend offline → fall through to an unlinked local login
-        }
-
-        if (res) {
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data.detail || "Invalid email or password.");
-          if (data.user?.role !== "supplier") throw new Error("This account is not a supplier account.");
-          onLogin({ ...data.user, mode });
-          return;
-        }
+      if (!data.access_token || !data.user) {
+        throw new Error("The server did not return a valid login session.");
       }
-
-      // Business login/registration and supplier registration
-      onLogin({ name: name || email.split("@")[0], email, role, mode });
+      setAuthToken(data.access_token);
+      await onLogin({ ...data.user, mode });
     } catch (err) {
       setError(err.message || "Authentication failed. Please check your details.");
     } finally {
@@ -119,6 +108,8 @@ export default function LoginPage({ onLogin }) {
     setName("");
     setEmail("");
     setPassword("");
+    setGstin("");
+    setSupplierId("");
   }
 
   return (
@@ -242,6 +233,21 @@ export default function LoginPage({ onLogin }) {
               </div>
             )}
 
+            {mode === "register" && (
+              <>
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: 8 }}>GSTIN *</label>
+                  <input type="text" value={gstin} onChange={e => setGstin(e.target.value)} placeholder="Enter your GSTIN" required style={{ width: "100%", padding: "11px 14px", borderRadius: 9, fontSize: 13, border: `1px solid ${C.border}`, background: C.bg, color: C.text, boxSizing: "border-box" }} />
+                </div>
+                {role === "supplier" && (
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: 8 }}>Supplier ID (if available)</label>
+                    <input type="text" value={supplierId} onChange={e => setSupplierId(e.target.value)} placeholder="Enter supplier ID" style={{ width: "100%", padding: "11px 14px", borderRadius: 9, fontSize: 13, border: `1px solid ${C.border}`, background: C.bg, color: C.text, boxSizing: "border-box" }} />
+                  </div>
+                )}
+              </>
+            )}
+
             {/* Email */}
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, letterSpacing: "0.5px", textTransform: "uppercase", display: "block", marginBottom: 8 }}>
@@ -249,7 +255,7 @@ export default function LoginPage({ onLogin }) {
               </label>
               <input
                 type="email" value={email} onChange={e => setEmail(e.target.value)}
-                placeholder={role === "admin" ? "admin@smarterp.com" : "you@business.com"}
+                placeholder={role === "admin" ? "Enter admin email" : "you@business.com"}
                 style={{
                   width: "100%", padding: "11px 14px", borderRadius: 9, fontSize: 13,
                   border: `1px solid ${C.border}`, background: C.bg, color: C.text,

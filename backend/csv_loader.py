@@ -10,13 +10,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import models
+import secrets
 
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
 EXCEL_PATH = DATA_DIR / "Capstone_ERP_Cleaned_Final (1).xlsx"
 SALES_BATCH_SIZE = 5000
-SUPPLIER_SEED_PASSWORD = "supplier123"
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -370,11 +370,13 @@ def sync_supplier_users(db: Session) -> None:
             existing_user.supplier_code = supplier.supplier_code
             continue
 
+        temp_password = secrets.token_urlsafe(12)
+        print(f"Seeded supplier user {email} with temporary password: {temp_password}", flush=True)
         new_rows.append(
             {
                 "name": supplier.supplier_name or supplier.name or supplier.supplier_code,
                 "email": email,
-                "password": pwd_context.hash(SUPPLIER_SEED_PASSWORD),
+                "password": pwd_context.hash(temp_password),
                 "role": "supplier",
                 "gstin": _dummy_supplier_gstin(supplier, index),
                 "supplier_code": supplier.supplier_code,

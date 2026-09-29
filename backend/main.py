@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
 
@@ -280,26 +280,39 @@ with engine.begin() as connection:
 
 app = FastAPI(title="Smart ERP Backend")
 
-# Allow frontend requests during development.
+ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # Vite dev server (erp-dashboard)
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",  # in case myapp (CRA) is also used
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Register all route files.
+# Public routes: login and registration must be available before authentication.
 app.include_router(auth.router)
-app.include_router(business.router)
-app.include_router(business_pages.router)
-app.include_router(dashboard.router)
-app.include_router(sales.router)
-app.include_router(inventory.router)
-app.include_router(supplier.router)
-app.include_router(data.router)
-app.include_router(chat.router)
-app.include_router(agent.router)
+# Protect application API routers with a verified Bearer JWT.
+protected_routers = [
+    anomaly.router,
+    business.router,
+    business_pages.router,
+    dashboard.router,
+    sales.router,
+    inventory.router,
+    supplier.router,
+    data.router,
+    chat.router,
+    agent.router,
+]
+for protected_router in protected_routers:
+    app.include_router(
+        protected_router,
+        dependencies=[Depends(auth.require_valid_token)],
+    )
 
 
 @app.on_event("startup")
