@@ -3,12 +3,13 @@ import LoginPage from "./LoginPage";
 import BRegisterBusinessPage from "./BRegisterBusinessPage";
 import AdminApprovalPage from "./AdminApprovalPage";
 import BusinessDashboard from "./BusinessDashboard";
-import BusinessStatusPage from "./BusinessStatusPage";
 import SupplierDashboard from "./SupplierDashboard";
 import { getBusinessByEmail, submitBusiness, subscribeBusinessChanges } from "./businessStore";
+import { fetchJson, getAuthToken, setAuthToken } from "./api";
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [authChecking, setAuthChecking] = useState(true);
   // "idle" | "needs-register" | "has-record"
   const [bizState, setBizState] = useState("idle");
   const [businessRecord, setBusinessRecord] = useState(null);
@@ -19,6 +20,27 @@ export default function App() {
     const rec = getBusinessByEmail(email);
     setBusinessRecord(rec || null);
     return rec;
+  }, []);
+
+  // Restore a saved session only after the backend validates its JWT.
+  useEffect(() => {
+    let cancelled = false;
+    async function restoreSession() {
+      if (!getAuthToken()) {
+        if (!cancelled) setAuthChecking(false);
+        return;
+      }
+      try {
+        const session = await fetchJson("/auth/me");
+        if (!cancelled) handleLogin({ ...session, mode: "login" });
+      } catch {
+        setAuthToken(null);
+      } finally {
+        if (!cancelled) setAuthChecking(false);
+      }
+    }
+    restoreSession();
+    return () => { cancelled = true; };
   }, []);
 
   // Real-time subscription for cross-tab approvals
@@ -65,12 +87,17 @@ export default function App() {
   }
 
   function handleLogout() {
+    setAuthToken(null);
     setUser(null);
     setBizState("idle");
     setBusinessRecord(null);
   }
 
   // ── Routing ──────────────────────────────────────────────
+
+  if (authChecking) {
+    return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "sans-serif" }}>Checking your session...</div>;
+  }
 
   if (!user) return <LoginPage onLogin={handleLogin} />;
 
@@ -83,7 +110,6 @@ export default function App() {
       return (
         <BRegisterBusinessPage
           user={user}
-          initialData={businessRecord?.status === "rejected" ? businessRecord : undefined}
           onSubmit={handleBusinessDetailsSubmit}
           onBack={handleLogout}
         />
@@ -91,18 +117,6 @@ export default function App() {
     }
 
     if (bizState === "has-record" && businessRecord) {
-      // Only approved businesses reach the dashboard; pending/rejected see their status.
-      // The cross-tab subscription above re-renders this as soon as an admin decides.
-      if (businessRecord.status !== "approved") {
-        return (
-          <BusinessStatusPage
-            business={businessRecord}
-            onRetry={() => setBizState("needs-register")}
-            onLogout={handleLogout}
-          />
-        );
-      }
-
       return (
         <BusinessDashboard
           business={businessRecord}
