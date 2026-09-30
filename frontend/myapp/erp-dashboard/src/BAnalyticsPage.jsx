@@ -29,6 +29,8 @@ const C = {
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 const filters = ["All Time", "This Month", "This Week"];
+// Filter label → the backend's period parameter.
+const PERIODS = { "All Time": "all", "This Month": "month", "This Week": "week" };
 
 const emptyState = {
   headerNote: "Operational breakdowns · Waiting for backend data",
@@ -66,7 +68,7 @@ export default function BAnalyticsPage() {
 
     async function loadData() {
       try {
-        const response = await fetchJson("/business-pages/analytics");
+        const response = await fetchJson(`/business-pages/analytics?period=${PERIODS[filter]}`);
         if (!ignore) {
           setData(response);
           setError("");
@@ -83,7 +85,7 @@ export default function BAnalyticsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [filter]);
 
   return (
     <div style={{ ...ibm }}>
@@ -144,7 +146,7 @@ export default function BAnalyticsPage() {
         <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ marginBottom: 18 }}>
             <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Category Efficiency</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Category-wise movement · {filter}</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Category-wise movement · {data.periodLabel || filter}</div>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data.categoryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={30}>
@@ -160,7 +162,7 @@ export default function BAnalyticsPage() {
         <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ marginBottom: 18 }}>
             <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Demand Pattern</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Day-wise demand · Live retail sales data</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Day-wise demand · {data.periodLabel || filter}</div>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={data.demandData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
@@ -178,7 +180,7 @@ export default function BAnalyticsPage() {
         <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ marginBottom: 18 }}>
             <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Forecast Accuracy</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Predicted vs Actual · {filter}</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Predicted vs Actual · {data.periodLabel || filter}</div>
           </div>
           <ResponsiveContainer width="100%" height={240}>
             <AreaChart data={data.accuracyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
