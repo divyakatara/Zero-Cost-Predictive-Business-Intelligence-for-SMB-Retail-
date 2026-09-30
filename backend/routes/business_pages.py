@@ -306,15 +306,41 @@ def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get
 
 
 
+ANALYTICS_PERIODS = {"all", "month", "week"}
+
+
+def analytics_window(db: Session, period: str):
+    """(start, end, label) for the requested period, anchored on the latest sale
+    date in the data (the dataset is historical, so "this month" means its latest
+    month). start/end are None for all time."""
+    latest = db.query(func.max(models.Sale.sale_date)).scalar()
+    if period == "all" or latest is None:
+        return None, None, "All time"
+    if period == "month":
+        start = latest.replace(day=1)
+        return start, latest, latest.strftime("%B %Y")
+    start = latest - timedelta(days=latest.weekday())
+    return start, latest, f"{start.strftime('%d %b')} - {latest.strftime('%d %b %Y')}"
+
+
 @router.get("/analytics")
-def analytics_overview(db: Session = Depends(get_db)):
+def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
+    period = period if period in ANALYTICS_PERIODS else "all"
+    start, end, period_label = analytics_window(db, period)
+
+    def in_period(query):
+        """Restrict a Sale query to the selected period."""
+        if start is None:
+            return query
+        return query.filter(models.Sale.sale_date >= start, models.Sale.sale_date <= end)
+
     products = db.query(models.Product).all()
     suppliers = db.query(models.Supplier).all()
     predicted_revenue = predicted_revenue_expression()
 
     total_stock = sum(product.supplier_stock or 0 for product in products)
     total_quantity_sold = (
-        db.query(func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0))
+        in_period(db.query(func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0)))
         .scalar()
         or 0
     )
@@ -322,7 +348,7 @@ def analytics_overview(db: Session = Depends(get_db)):
 
     sold_product_codes = {
         row[0]
-        for row in db.query(models.Sale.product_code)
+        for row in in_period(db.query(models.Sale.product_code))
         .filter(models.Sale.product_code.isnot(None))
         .distinct()
         .all()
@@ -332,16 +358,19 @@ def analytics_overview(db: Session = Depends(get_db)):
 
     supplier_reliability = round((sum(float(s.rating or 0) for s in suppliers) / len(suppliers)) / 5 * 100, 1) if suppliers else 0
 
+    bucket = "day" if period == "week" else "week"
     weekly_rows = (
-        db.query(
-            func.date_trunc("week", models.Sale.sale_date).label("week_start"),
-            func.coalesce(func.sum(models.Sale.revenue), 0.0).label("actual"),
-            func.coalesce(func.sum(predicted_revenue), 0.0).label("predicted"),
+        in_period(
+            db.query(
+                func.date_trunc(bucket, models.Sale.sale_date).label("week_start"),
+                func.coalesce(func.sum(models.Sale.revenue), 0.0).label("actual"),
+                func.coalesce(func.sum(predicted_revenue), 0.0).label("predicted"),
+            )
         )
         .filter(models.Sale.sale_date.isnot(None))
         .group_by("week_start")
         .order_by(desc("week_start"))
-        .limit(4)
+        .limit(4 if period == "all" else 7)
         .all()
     )
     accuracy_data = []
@@ -353,12 +382,12 @@ def analytics_overview(db: Session = Depends(get_db)):
             accuracy_values.append(max(0.0, 100 - (abs(actual - predicted) / actual) * 100))
         accuracy_data.append(
             {
-                "name": f"W{index}",
+                "name": row.week_start.strftime("%a") if bucket == "day" else f"W{index}",
                 "actual": round(actual, 2),
                 "predicted": round(predicted, 2),
             }
         )
-    while len(accuracy_data) < 4:
+    while period != "week" and len(accuracy_data) < 4:
         accuracy_data.append({"name": f"W{len(accuracy_data) + 1}", "actual": 0, "predicted": 0})
     forecast_accuracy = round(sum(accuracy_values) / len(accuracy_values), 1) if accuracy_values else 0
 
@@ -368,9 +397,11 @@ def analytics_overview(db: Session = Depends(get_db)):
         if product.product_code
     }
     product_revenue_rows = (
-        db.query(
-            models.Sale.product_code,
-            func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
+        in_period(
+            db.query(
+                models.Sale.product_code,
+                func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
+            )
         )
         .filter(models.Sale.product_code.isnot(None))
         .group_by(models.Sale.product_code)
@@ -389,9 +420,11 @@ def analytics_overview(db: Session = Depends(get_db)):
     weekday_map = {0: "Sun", 1: "Mon", 2: "Tue", 3: "Wed", 4: "Thu", 5: "Fri", 6: "Sat"}
     weekday_expr = func.extract("dow", models.Sale.sale_date)
     demand_rows = (
-        db.query(
-            weekday_expr.label("weekday"),
-            func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
+        in_period(
+            db.query(
+                weekday_expr.label("weekday"),
+                func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
+            )
         )
         .filter(models.Sale.sale_date.isnot(None))
         .group_by(weekday_expr)
@@ -405,11 +438,13 @@ def analytics_overview(db: Session = Depends(get_db)):
     demand_data = [{"name": day, "value": round(demand_totals[day], 2)} for day in weekday_names]
 
     matrix_rows = (
-        db.query(
-            models.Sale.product_code,
-            func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0).label("qty"),
-            func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
-            func.coalesce(func.sum(models.Sale.profit), 0.0).label("profit"),
+        in_period(
+            db.query(
+                models.Sale.product_code,
+                func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0).label("qty"),
+                func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
+                func.coalesce(func.sum(models.Sale.profit), 0.0).label("profit"),
+            )
         )
         .filter(models.Sale.product_code.isnot(None))
         .group_by(models.Sale.product_code)
@@ -445,7 +480,9 @@ def analytics_overview(db: Session = Depends(get_db)):
         )
 
     return {
-        "headerNote": "Operational breakdowns - Live database data",
+        "headerNote": f"Operational breakdowns - {period_label} - Live database data",
+        "period": period,
+        "periodLabel": period_label,
         "kpis": [
             {"label": "Stock Turnover", "value": f"{stock_turnover}x", "sub": "Units sold versus available stock"},
             {"label": "Dead Stock Share", "value": f"{dead_stock_share}%", "sub": "Products without recorded sales"},
