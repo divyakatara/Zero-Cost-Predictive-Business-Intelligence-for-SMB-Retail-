@@ -27,60 +27,55 @@ const C = {
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm  = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-// Sample Data
+// Sample data for supplier accounts (supplier-level sales aren't tracked in the dataset yet).
+// Internally consistent: months sum to Total Revenue, Dec's weeks sum to Dec, the last week's days sum to its week.
 const allTimeData = [
-  { month: "Jan", actual: 0, predicted: 0 },
-  { month: "Feb", actual: 0, predicted: 0 },
-  { month: "Mar", actual: 0, predicted: 0 },
-  { month: "Apr", actual: 0, predicted: 0 },
-  { month: "May", actual: 0, predicted: 0 },
-  { month: "Jun", actual: 0, predicted: 0 },
-  { month: "Jul", actual: 0, predicted: 0 },
-  { month: "Aug", actual: 0, predicted: 0 },
-  { month: "Sep", actual: 0, predicted: 0 },
-  { month: "Oct", actual: 0, predicted: 0 },
-  { month: "Nov", actual: 0, predicted: 0 },
-  { month: "Dec", actual: 0, predicted: 0 },
+  { month: "Jan", actual: 318400, predicted: 309800 },
+  { month: "Feb", actual: 296750, predicted: 305200 },
+  { month: "Mar", actual: 342900, predicted: 336100 },
+  { month: "Apr", actual: 365200, predicted: 371900 },
+  { month: "May", actual: 351800, predicted: 360400 },
+  { month: "Jun", actual: 389600, predicted: 381200 },
+  { month: "Jul", actual: 402300, predicted: 410800 },
+  { month: "Aug", actual: 378900, predicted: 386500 },
+  { month: "Sep", actual: 415700, predicted: 408300 },
+  { month: "Oct", actual: 436200, predicted: 441700 },
+  { month: "Nov", actual: 458900, predicted: 452100 },
+  { month: "Dec", actual: 492300, predicted: 501600 },
 ];
 
 const thisMonthData = [
-  { month: "Week 1", actual: 0, predicted: 0 },
-  { month: "Week 2", actual: 0, predicted: 0 },
-  { month: "Week 3", actual: 0, predicted: 0 },
-  { month: "Week 4", actual: 0, predicted: 0 },
+  { month: "Week 1", actual: 118400, predicted: 115900 },
+  { month: "Week 2", actual: 121900, predicted: 124300 },
+  { month: "Week 3", actual: 124700, predicted: 122800 },
+  { month: "Week 4", actual: 127300, predicted: 130100 },
 ];
 
 const thisWeekData = [
-  { month: "Mon", actual: 0, predicted: 0 },
-  { month: "Tue", actual: 0, predicted: 0 },
-  { month: "Wed", actual: 0, predicted: 0 },
-  { month: "Thu", actual: 0, predicted: 0 },
-  { month: "Fri", actual: 0, predicted: 0 },
-  { month: "Sat", actual: 0, predicted: 0 },
-  { month: "Sun", actual: 0, predicted: 0 },
+  { month: "Mon", actual: 17200, predicted: 17600 },
+  { month: "Tue", actual: 18400, predicted: 18100 },
+  { month: "Wed", actual: 19100, predicted: 18800 },
+  { month: "Thu", actual: 18600, predicted: 19200 },
+  { month: "Fri", actual: 19800, predicted: 19400 },
+  { month: "Sat", actual: 17900, predicted: 18300 },
+  { month: "Sun", actual: 16300, predicted: 16900 },
 ];
 
 const topProducts = [
-  { name: "Product 1", revenue: 0, units: 0, trend: "up"   },
-  { name: "Product 2", revenue: 0, units: 0, trend: "up"   },
-  { name: "Product 3", revenue: 0, units: 0, trend: "down" },
-  { name: "Product 4", revenue: 0, units: 0, trend: "up"   },
-  { name: "Product 5", revenue: 0, units: 0, trend: "down" },
+  { name: "Premium Rice 5kg", revenue: 1182400, units: 3942, trend: "up" },
+  { name: "Wireless Earbuds", revenue: 986300, units: 1318, trend: "up" },
+  { name: "Cotton T-Shirt", revenue: 874500, units: 2186, trend: "down" },
+  { name: "A4 Notebook Pack", revenue: 812600, units: 4063, trend: "up" },
+  { name: "Cooking Oil 1L", revenue: 793150, units: 2655, trend: "down" },
 ];
 
-const topProductsChart = [
-  { name: "Product 1", revenue: 0 },
-  { name: "Product 2", revenue: 0 },
-  { name: "Product 3", revenue: 0 },
-  { name: "Product 4", revenue: 0 },
-  { name: "Product 5", revenue: 0 },
-];
+const topProductsChart = topProducts.map(({ name, revenue }) => ({ name, revenue }));
 
 const kpis = [
-  { label: "Total Revenue",    value: "₹ 0", sub: "No data yet", icon: "◈", accent: true  },
-  { label: "Total Orders",     value: "0",   sub: "No data yet", icon: "◎", accent: false },
-  { label: "Avg Order Value",  value: "₹ 0", sub: "No data yet", icon: "◉", accent: false },
-  { label: "Predicted (Next)", value: "₹ 0", sub: "No data yet", icon: "◌", accent: false },
+  { label: "Total Revenue",    value: "₹ 46,48,950", sub: "Jan – Dec · sample data", icon: "◈", accent: true  },
+  { label: "Total Orders",     value: "2,514",       sub: "Orders fulfilled",        icon: "◎", accent: false },
+  { label: "Avg Order Value",  value: "₹ 1,849",     sub: "Revenue per order",       icon: "◉", accent: false },
+  { label: "Predicted (Next)", value: "₹ 5,08,400",  sub: "Next month forecast",     icon: "◌", accent: false },
 ];
 
 const filters = ["All Time", "This Month", "This Week"];
@@ -136,7 +131,7 @@ export default function SSalesPage() {
             <div style={{ width: 3, height: 28, background: C.green, borderRadius: 2 }}></div>
             <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "0.5px" }}>Sales</h1>
           </div>
-          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>Overview, predictions & top products · No data yet</p>
+          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>Overview, predictions & top products · Sample data</p>
         </div>
         <div style={{ display: "flex", background: "#eee8e0", borderRadius: 10, padding: 4, gap: 2 }}>
           {filters.map(f => (
@@ -255,9 +250,9 @@ export default function SSalesPage() {
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>₹{p.revenue.toLocaleString()}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>₹{p.revenue.toLocaleString("en-IN")}</div>
                   <div style={{ fontSize: 11, color: p.trend === "up" ? C.green : "#c83030", marginTop: 8, fontWeight: 500 }}>
-                    {p.trend === "up" ? "▲" : "▼"} No data
+                    {p.trend === "up" ? "▲ Trending up" : "▼ Trending down"}
                   </div>
                 </div>
               </div>
@@ -275,7 +270,7 @@ export default function SSalesPage() {
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v}`} />
               <Tooltip content={<BarTooltip />} cursor={{ fill: C.greenSubtle }} />
-              <Bar dataKey="revenue" fill={C.greenSubtle} radius={[6, 6, 0, 0]}
+              <Bar dataKey="revenue" fill={C.green} radius={[6, 6, 0, 0]}
                 onMouseEnter={(_, i) => setHoveredProduct(i)}
                 onMouseLeave={() => setHoveredProduct(null)}
               />
