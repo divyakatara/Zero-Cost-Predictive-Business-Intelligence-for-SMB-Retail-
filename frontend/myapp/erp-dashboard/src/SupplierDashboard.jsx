@@ -207,7 +207,7 @@ export default function SupplierDashboard({ user, onLogout }) {
         {activeNav === "analytics" && <SAnalyticsPage />}
         {activeNav === "aiinsights" && <SAIInsightsPage user={user} />}
         {activeNav === "alerts" && <SAlertsPage user={user} />}
-        {activeNav === "settings" && <SSettingsPage />}
+        {activeNav === "settings" && <SSettingsPage user={user} onLogout={onLogout} />}
 
         
 

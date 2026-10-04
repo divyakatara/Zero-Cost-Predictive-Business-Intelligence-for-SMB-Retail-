@@ -1,57 +1,114 @@
 import { useEffect, useRef, useState } from "react";
-import { apiFetch } from "./api";
-
-const fontLink = document.createElement("link");
-fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
-fontLink.rel = "stylesheet";
-document.head.appendChild(fontLink);
+import { apiFetch, openGstCertificateApi } from "./api";
+import {
+  AccountCard, ChangePasswordCard, Notice, PageHeader, SecurityInfoCard,
+  SettingsCard, SettingsGrid, SettingsRow, TabBar,
+} from "./SettingsParts";
 
 const C = {
-  bg:          "#f5f2ec",
   card:        "#ffffff",
   cardGreen:   "#eef4ee",
   green:       "#4a7a49",
-  greenLight:  "#c8d8c7",
-  greenMid:    "#7aaa79",
   greenBorder: "#c8d8c7",
   greenSubtle: "#f0f6f0",
   text:        "#1a1a1a",
   textMuted:   "#5a6e5a",
   textDim:     "#9aaa9a",
   border:      "#e4ddd4",
-  danger:      "#c83030",
-  dangerBg:    "#fdf0f0",
+  danger:      "#b8543f",
 };
 
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm  = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-const tabs = ["Business Profile", "Account", "Preferences", "Data", "Security", "Verification"];
+const tabs = ["Business Profile", "Account", "Security", "Data"];
 
-export default function BSettingsPage({
-  activeTab,
-  onTabChange,
-  verificationStatus = "Not Verified",
-  onVerificationStatusChange,
-}) {
-  const [internalTab, setInternalTab] = useState(activeTab || "Business Profile");
-  const currentTab = activeTab || internalTab;
-  const [gstin, setGstin] = useState("");
-  const [gstDocument, setGstDocument] = useState("");
+function formatDate(value) {
+  if (!value) return "";
+  const iso = /[zZ]|[+-]\d\d:?\d\d$/.test(value) ? value : `${value}Z`;
+  return new Date(iso).toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
+}
+
+function BusinessProfileTab({ business }) {
+  const [certError, setCertError] = useState("");
+
+  if (!business) {
+    return <Notice>No business registration was found for this account.</Notice>;
+  }
+
+  const address = [business.addressLine1, business.addressLine2, business.city, business.state, business.pincode, business.country]
+    .filter(Boolean)
+    .join(", ");
+
+  async function viewCertificate() {
+    setCertError("");
+    try {
+      await openGstCertificateApi(business.id);
+    } catch (err) {
+      setCertError(err.message);
+    }
+  }
+
+  return (
+    <SettingsGrid>
+      <div>
+        <SettingsCard title="Business Details" subtitle="As submitted in your registration">
+          <SettingsRow label="Business name" value={business.businessName} />
+          <SettingsRow label="Type" value={business.businessType} />
+          <SettingsRow label="Category" value={business.category} />
+          <SettingsRow label="Year established" value={business.yearEstablished} />
+          <SettingsRow label="Employees" value={business.employeeCount} />
+          <SettingsRow label="Description" value={business.description} />
+        </SettingsCard>
+        <SettingsCard title="Contact">
+          <SettingsRow label="Address" value={address} />
+          <SettingsRow label="Phone" value={business.phone} />
+          <SettingsRow label="Business email" value={business.email} />
+          <SettingsRow label="Website" value={business.website} />
+        </SettingsCard>
+      </div>
+      <SettingsCard title="Verification" subtitle="Reviewed by the Smart ERP administrator">
+        {certError && <Notice>{certError}</Notice>}
+        <SettingsRow
+          label="Status"
+          value={<span style={{ color: business.status === "approved" ? C.green : C.danger, textTransform: "capitalize" }}>● {business.status}</span>}
+        />
+        <SettingsRow label="Submitted" value={formatDate(business.submittedAt)} />
+        <SettingsRow label="Reviewed" value={formatDate(business.reviewedAt)} />
+        <SettingsRow label="Registration number" value={business.registrationNumber} />
+        <SettingsRow label="GSTIN" value={business.gstin} />
+        <SettingsRow label="PAN" value={business.pan} />
+        <SettingsRow
+          label="GST certificate"
+          value={business.hasGstCertificateFile ? (
+            <button
+              onClick={viewCertificate}
+              style={{
+                background: C.greenSubtle, color: C.green, border: `1px solid ${C.greenBorder}`, borderRadius: 6,
+                padding: "4px 10px", fontSize: 12, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              View {business.gstCertificateName}
+            </button>
+          ) : business.gstCertificateName || ""}
+        />
+        <div style={{ fontSize: 12, color: C.textDim, marginTop: 14, lineHeight: 1.5 }}>
+          To change these details, contact the administrator.
+        </div>
+      </SettingsCard>
+    </SettingsGrid>
+  );
+}
+
+function DataTab() {
   const fileInputRef = useRef(null);
-
-  // Data connection state
   const [dataStatus, setDataStatus] = useState(null);
   const [dataMsg, setDataMsg] = useState({ text: "", type: "" });
   const [dataLoading, setDataLoading] = useState("");
 
   useEffect(() => {
-    if (activeTab) setInternalTab(activeTab);
-  }, [activeTab]);
-
-  useEffect(() => {
-    if (currentTab === "Data") fetchDataStatus();
-  }, [currentTab]);
+    fetchDataStatus();
+  }, []);
 
   async function fetchDataStatus() {
     try {
@@ -123,246 +180,7 @@ export default function BSettingsPage({
     }
   }
 
-  const [accountToggles, setAccountToggles] = useState({
-    emailNotifications: true,
-    salesAlerts: true,
-    inventoryAlerts: true,
-    supplierUpdates: false,
-    weeklyReports: false,
-  });
-
-  const [preferenceToggles, setPreferenceToggles] = useState({
-    compactDashboard: false,
-    autoSave: true,
-    showAI: true,
-    alertHighlights: true,
-    smartForecast: false,
-  });
-
-  const [securityToggles, setSecurityToggles] = useState({
-    twoFactor: false,
-    loginAlerts: true,
-    sessionTimeout: true,
-    deviceVerification: false,
-  });
-
-  function toggleAccount(key) {
-    setAccountToggles(prev => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  function togglePreference(key) {
-    setPreferenceToggles(prev => ({ ...prev, [key]: !prev[key] }));
-  }
-
-  function toggleSecurity(key) {
-    setSecurityToggles(prev => ({ ...prev, [key]: !prev[key] }));
-  }
-
   return (
-    <div style={{ ...ibm }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 32 }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-            <div style={{ width: 3, height: 28, background: C.green, borderRadius: 2 }}></div>
-            <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "0.5px" }}>
-              Settings
-            </h1>
-          </div>
-          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>
-            Manage your business, account and application preferences
-          </p>
-        </div>
-        <button style={{
-          padding: "10px 18px",
-          background: C.green,
-          color: "#fff",
-          border: "none",
-          borderRadius: 8,
-          fontSize: 12,
-          fontWeight: 700,
-          cursor: "pointer",
-          fontFamily: "'IBM Plex Sans', sans-serif",
-          boxShadow: "0 4px 16px rgba(74,122,73,0.2)",
-        }}>
-          Save Changes
-        </button>
-      </div>
-
-      {/* Tabs */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
-        {tabs.map(tab => (
-          <button
-            key={tab}
-            onClick={() => {
-              setInternalTab(tab);
-              onTabChange?.(tab);
-            }}
-            style={{
-              padding: "7px 14px",
-              borderRadius: 8,
-              fontSize: 12,
-              cursor: "pointer",
-              border: `1px solid ${currentTab === tab ? C.green : C.border}`,
-              background: currentTab === tab ? C.green : C.card,
-              color: currentTab === tab ? "#fff" : C.textDim,
-              fontFamily: "'IBM Plex Sans', sans-serif",
-              fontWeight: 600,
-              transition: "all .12s",
-            }}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* Business Profile */}
-      {currentTab === "Business Profile" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 18 }}>
-
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>Business Details</div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-              <div>
-                <label style={labelStyle()}>Business Name</label>
-                <input defaultValue="Smart ERP Business" style={inputStyle()} />
-              </div>
-              <div>
-                <label style={labelStyle()}>Owner Name</label>
-                <input defaultValue="User" style={inputStyle()} />
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-              <div>
-                <label style={labelStyle()}>Business Email</label>
-                <input defaultValue="business@email.com" style={inputStyle()} />
-              </div>
-              <div>
-                <label style={labelStyle()}>Phone Number</label>
-                <input defaultValue="+91 00000 00000" style={inputStyle()} />
-              </div>
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>Business Address</label>
-              <input defaultValue="Business address" style={inputStyle()} />
-            </div>
-
-            <div>
-              <label style={labelStyle()}>Business Description</label>
-              <textarea defaultValue="Business description" style={textareaStyle()} />
-            </div>
-          </div>
-
-          <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.green, marginBottom: 18 }}>Profile Summary</div>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              <div style={summaryCardStyle()}>
-                <div style={{ fontSize: 11, color: C.textDim }}>Business Type</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 4 }}>General Business</div>
-              </div>
-              <div style={summaryCardStyle()}>
-                <div style={{ fontSize: 11, color: C.textDim }}>Location</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 4 }}>No data</div>
-              </div>
-              <div style={summaryCardStyle()}>
-                <div style={{ fontSize: 11, color: C.textDim }}>GST / Tax ID</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 4 }}>No data</div>
-              </div>
-              <div style={summaryCardStyle()}>
-                <div style={{ fontSize: 11, color: C.textDim }}>Working Hours</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginTop: 4 }}>No data</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Account */}
-      {currentTab === "Account" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>Account Information</div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>Username</label>
-              <input defaultValue="user" style={inputStyle()} />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>Email</label>
-              <input defaultValue="user@email.com" style={inputStyle()} />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>Role</label>
-              <input defaultValue="Business Admin" style={inputStyle()} />
-            </div>
-
-            <div>
-              <label style={labelStyle()}>Language</label>
-              <input defaultValue="English" style={inputStyle()} />
-            </div>
-          </div>
-
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>Notification Settings</div>
-
-            <div style={{ display: "grid", gap: 14 }}>
-              <ToggleRow label="Email Notifications" value={accountToggles.emailNotifications} onToggle={() => toggleAccount("emailNotifications")} />
-              <ToggleRow label="Sales Alerts" value={accountToggles.salesAlerts} onToggle={() => toggleAccount("salesAlerts")} />
-              <ToggleRow label="Inventory Alerts" value={accountToggles.inventoryAlerts} onToggle={() => toggleAccount("inventoryAlerts")} />
-              <ToggleRow label="Supplier Updates" value={accountToggles.supplierUpdates} onToggle={() => toggleAccount("supplierUpdates")} />
-              <ToggleRow label="Weekly Reports" value={accountToggles.weeklyReports} onToggle={() => toggleAccount("weeklyReports")} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Preferences */}
-      {currentTab === "Preferences" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>App Preferences</div>
-
-            <div style={{ display: "grid", gap: 16 }}>
-              <div>
-                <label style={labelStyle()}>Currency</label>
-                <input defaultValue="INR (₹)" style={inputStyle()} />
-              </div>
-              <div>
-                <label style={labelStyle()}>Date Format</label>
-                <input defaultValue="DD/MM/YYYY" style={inputStyle()} />
-              </div>
-              <div>
-                <label style={labelStyle()}>Timezone</label>
-                <input defaultValue="Asia/Calcutta" style={inputStyle()} />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.green, marginBottom: 18 }}>Display & Workflow</div>
-
-            <div style={{ display: "grid", gap: 14 }}>
-              <ToggleRow label="Compact Dashboard View" value={preferenceToggles.compactDashboard} onToggle={() => togglePreference("compactDashboard")} />
-              <ToggleRow label="Auto-save Changes" value={preferenceToggles.autoSave} onToggle={() => togglePreference("autoSave")} />
-              <ToggleRow label="Show AI Suggestions" value={preferenceToggles.showAI} onToggle={() => togglePreference("showAI")} />
-              <ToggleRow label="Enable Alert Highlights" value={preferenceToggles.alertHighlights} onToggle={() => togglePreference("alertHighlights")} />
-              <ToggleRow label="Use Smart Forecast Mode" value={preferenceToggles.smartForecast} onToggle={() => togglePreference("smartForecast")} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Data */}
-      {currentTab === "Data" && (
         <div style={{ display: "grid", gap: 18 }}>
 
           {/* Connection Status Banner */}
@@ -509,232 +327,35 @@ export default function BSettingsPage({
             </div>
           </div>
         </div>
-      )}
-
-      {/* Security */}
-      {currentTab === "Security" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>Password & Access</div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>Current Password</label>
-              <input type="password" defaultValue="password" style={inputStyle()} />
-            </div>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={labelStyle()}>New Password</label>
-              <input type="password" defaultValue="password" style={inputStyle()} />
-            </div>
-
-            <div style={{ marginBottom: 18 }}>
-              <label style={labelStyle()}>Confirm Password</label>
-              <input type="password" defaultValue="password" style={inputStyle()} />
-            </div>
-
-            <button style={primaryButtonStyle()}>Update Password</button>
-          </div>
-
-          <div style={{ display: "grid", gap: 18 }}>
-            <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-              <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.green, marginBottom: 18 }}>Security Options</div>
-
-              <div style={{ display: "grid", gap: 14 }}>
-                <ToggleRow label="Two-Factor Authentication" value={securityToggles.twoFactor} onToggle={() => toggleSecurity("twoFactor")} />
-                <ToggleRow label="Login Alerts" value={securityToggles.loginAlerts} onToggle={() => toggleSecurity("loginAlerts")} />
-                <ToggleRow label="Session Timeout" value={securityToggles.sessionTimeout} onToggle={() => toggleSecurity("sessionTimeout")} />
-                <ToggleRow label="Device Verification" value={securityToggles.deviceVerification} onToggle={() => toggleSecurity("deviceVerification")} />
-              </div>
-            </div>
-
-            <div style={{ background: C.dangerBg, borderRadius: 12, padding: "24px", border: "1px solid #f2bcbc", boxShadow: "0 1px 4px rgba(200,48,48,0.06)" }}>
-              <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.danger, marginBottom: 10 }}>Danger Zone</div>
-              <div style={{ fontSize: 12, color: C.textMuted, marginBottom: 16 }}>
-                Deactivate account or remove business workspace permanently.
-              </div>
-
-              <div style={{ display: "flex", gap: 10 }}>
-                <button style={{
-                  padding: "10px 16px",
-                  background: "#fff",
-                  color: C.danger,
-                  border: "1px solid #f2bcbc",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}>
-                  Deactivate
-                </button>
-                <button style={{
-                  padding: "10px 16px",
-                  background: C.danger,
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}>
-                  Delete Account
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {currentTab === "Verification" && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
-          <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.text, marginBottom: 18 }}>GST Verification</div>
-            <div style={{ display: "grid", gap: 16 }}>
-              <div>
-                <label style={labelStyle()}>GSTIN</label>
-                <input value={gstin} onChange={(e) => setGstin(e.target.value)} placeholder="Enter GSTIN" style={inputStyle()} />
-              </div>
-              <div>
-                <label style={labelStyle()}>GST Document</label>
-                <input type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  setGstDocument(file ? file.name : "");
-                  if (file) {
-                    onVerificationStatusChange?.("Pending");
-                  }
-                }} style={inputStyle()} />
-              </div>
-            </div>
-          </div>
-
-          <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-            <div style={{ ...syne, fontSize: 15, fontWeight: 700, color: C.green, marginBottom: 18 }}>Verification Status</div>
-            <div style={summaryCardStyle()}>
-              <div style={{ fontSize: 11, color: C.textDim }}>Current status</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: C.text, marginTop: 6 }}>{verificationStatus}</div>
-            </div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 12 }}>
-              {gstDocument ? `Uploaded: ${gstDocument}` : "Upload your GST document to move to pending review."}
-            </div>
-          </div>
-        </div>
-      )}
-
-    </div>
   );
 }
 
-function ToggleRow({ label, value, onToggle }) {
+export default function BSettingsPage({ business, onLogout }) {
+  const [currentTab, setCurrentTab] = useState("Business Profile");
+
   return (
-    <div style={toggleRowStyle()}>
-      <span style={{ fontSize: 13, color: "#1a1a1a" }}>{label}</span>
-      <button
-        onClick={onToggle}
-        style={{
-          width: 42,
-          height: 24,
-          borderRadius: 999,
-          border: "none",
-          cursor: "pointer",
-          background: value ? "#4a7a49" : "#c8d8c7",
-          position: "relative",
-          transition: "all .18s ease",
-          padding: 0,
-        }}
-      >
-        <span
-          style={{
-            position: "absolute",
-            top: 3,
-            left: value ? 21 : 3,
-            width: 18,
-            height: 18,
-            borderRadius: "50%",
-            background: "#fff",
-            transition: "all .18s ease",
-            boxShadow: "0 1px 4px rgba(0,0,0,0.16)",
-          }}
-        />
-      </button>
+    <div style={{ ...ibm }}>
+      <PageHeader title="Settings" subtitle="Your business profile, account, security and data" />
+      <TabBar tabs={tabs} active={currentTab} onChange={setCurrentTab} />
+
+      {currentTab === "Business Profile" && <BusinessProfileTab business={business} />}
+
+      {currentTab === "Account" && (
+        <SettingsGrid>
+          <AccountCard onLogout={onLogout} />
+        </SettingsGrid>
+      )}
+
+      {currentTab === "Security" && (
+        <SettingsGrid>
+          <ChangePasswordCard />
+          <SecurityInfoCard />
+        </SettingsGrid>
+      )}
+
+      {currentTab === "Data" && <DataTab />}
     </div>
   );
-}
-
-function labelStyle() {
-  return {
-    fontSize: 12,
-    fontWeight: 600,
-    color: "#5a6e5a",
-    display: "block",
-    marginBottom: 8,
-  };
-}
-
-function inputStyle() {
-  return {
-    width: "100%",
-    padding: "11px 14px",
-    borderRadius: 9,
-    fontSize: 14,
-    border: "1px solid #e4ddd4",
-    background: "#f5f2ec",
-    color: "#1a1a1a",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-}
-
-function textareaStyle() {
-  return {
-    width: "100%",
-    minHeight: 110,
-    padding: "11px 14px",
-    borderRadius: 9,
-    fontSize: 14,
-    border: "1px solid #e4ddd4",
-    background: "#f5f2ec",
-    color: "#1a1a1a",
-    fontFamily: "'IBM Plex Sans', sans-serif",
-    outline: "none",
-    boxSizing: "border-box",
-    resize: "vertical",
-  };
-}
-
-function summaryCardStyle() {
-  return {
-    background: "#fff",
-    borderRadius: 10,
-    padding: "14px 16px",
-    border: "1px solid #c8d8c7",
-  };
-}
-
-function toggleRowStyle() {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 14px",
-    borderRadius: 10,
-    background: "#fff",
-    border: "1px solid #e4ddd4",
-  };
-}
-
-function actionRowStyle() {
-  return {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "14px 16px",
-    borderRadius: 10,
-    background: "#f0f6f0",
-    border: "1px solid #c8d8c7",
-  };
 }
 
 function primaryButtonStyle() {

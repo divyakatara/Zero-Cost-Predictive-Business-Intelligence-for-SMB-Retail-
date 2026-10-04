@@ -195,3 +195,51 @@ def test_auth_me_accepts_valid_token(client):
 
     assert response.status_code == 200
     assert response.json()["email"] == "admin@test.com"
+
+
+def login_token(client, email, password, role="business"):
+    response = client.post(f"/auth/login?role={role}", json={"email": email, "password": password})
+    return response
+
+
+def test_change_password_then_login_with_new_password(client):
+    register_user(client, "business")
+    token = login_token(client, "business@test.com", "TestUser123!").json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    response = client.post(
+        "/auth/change-password",
+        json={"current_password": "TestUser123!", "new_password": "NewPass456!"},
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert login_token(client, "business@test.com", "TestUser123!").status_code == 401
+    assert login_token(client, "business@test.com", "NewPass456!").status_code == 200
+
+
+@pytest.mark.parametrize(
+    "current, new, detail",
+    [
+        ("WrongPass!", "NewPass456!", "Current password is incorrect."),
+        ("TestUser123!", "short", "at least 8"),
+        ("TestUser123!", "TestUser123!", "different"),
+    ],
+)
+def test_change_password_validation(client, current, new, detail):
+    register_user(client, "supplier")
+    token = login_token(client, "supplier@test.com", "TestUser123!", "supplier").json()["access_token"]
+
+    response = client.post(
+        "/auth/change-password",
+        json={"current_password": current, "new_password": new},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 400
+    assert detail in response.json()["detail"]
+
+
+def test_change_password_requires_token(client):
+    response = client.post("/auth/change-password", json={"current_password": "a", "new_password": "b" * 10})
+    assert response.status_code == 401

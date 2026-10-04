@@ -5,6 +5,7 @@ import jwt
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from passlib.context import CryptContext
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
@@ -197,3 +198,39 @@ def get_me(current_user: dict = Depends(get_current_user), db: Session = Depends
         "email": current_user["sub"],
         "role": current_user["role"],
     }
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+MIN_PASSWORD_LENGTH = 8
+
+
+@router.post("/change-password")
+def change_password(
+    payload: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    db_user = db.query(models.User).filter(models.User.email == current_user["sub"]).first()
+    if not db_user:
+        # The admin account is configured on the server, not stored as a user row.
+        raise HTTPException(status_code=400, detail="This account's password is managed on the server.")
+
+    if password_is_hashed(db_user.password):
+        current_matches = verify_password(payload.current_password, db_user.password)
+    else:
+        current_matches = db_user.password == payload.current_password
+    if not current_matches:
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+
+    if len(payload.new_password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"New password must be at least {MIN_PASSWORD_LENGTH} characters.")
+    if payload.new_password == payload.current_password:
+        raise HTTPException(status_code=400, detail="New password must be different from the current one.")
+
+    db_user.password = hash_password(payload.new_password)
+    db.commit()
+    return {"message": "Password updated successfully."}
