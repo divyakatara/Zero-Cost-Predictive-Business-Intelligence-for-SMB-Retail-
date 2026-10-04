@@ -214,6 +214,52 @@ def run_simple_migrations():
             )
         )
 
+        # One awaiting-approval draft per product (TASK-52). Older parallel
+        # drafts left by the race this index closes are cancelled first,
+        # keeping the newest one (the draft the app already shows), and each
+        # cancellation is logged in the agent audit trail.
+        duplicate_ids = [
+            row.id
+            for row in connection.execute(
+                text(
+                    """
+                    SELECT id FROM (
+                        SELECT id, ROW_NUMBER() OVER (
+                            PARTITION BY product_id ORDER BY created_at DESC, id DESC
+                        ) AS newest_first
+                        FROM purchase_orders
+                        WHERE status = 'awaiting_approval' AND product_id IS NOT NULL
+                    ) ranked
+                    WHERE newest_first > 1
+                    """
+                )
+            )
+        ]
+        for duplicate_id in duplicate_ids:
+            connection.execute(
+                text(
+                    "UPDATE purchase_orders SET status = 'cancelled', "
+                    "decision_reason = 'Duplicate draft closed automatically; a newer draft for this product is awaiting approval.', "
+                    "updated_at = NOW() WHERE id = :id"
+                ),
+                {"id": duplicate_id},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO agent_actions (purchase_order_id, product_id, action_type, status, message, actor, created_at) "
+                    "SELECT id, product_id, 'cancelled', 'success', "
+                    "'Draft #' || id || ' cancelled as a duplicate of a newer awaiting draft.', 'system', NOW() "
+                    "FROM purchase_orders WHERE id = :id"
+                ),
+                {"id": duplicate_id},
+            )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ux_purchase_orders_one_awaiting_per_product "
+                "ON purchase_orders (product_id) WHERE status = 'awaiting_approval'"
+            )
+        )
+
         # Backfill the denormalized snapshot fields for any purchase_orders rows
         # created before this migration existed (safe/idempotent: only fills
         # rows that are still NULL, never overwrites).

@@ -22,6 +22,7 @@ what guarantees the agent can never approve its own recommendation.
 
 from typing import Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import models
@@ -123,6 +124,16 @@ def get_supplier_recommendation(db: Session, product_id: int) -> dict:
     return supplier_selection.recommend_suppliers(db, product)
 
 
+def _awaiting_draft(db: Session, product_id: int) -> Optional["models.PurchaseOrder"]:
+    return (
+        db.query(models.PurchaseOrder)
+        .filter(models.PurchaseOrder.product_id == product_id)
+        .filter(models.PurchaseOrder.status == "awaiting_approval")
+        .order_by(models.PurchaseOrder.created_at.desc())
+        .first()
+    )
+
+
 def create_draft(db: Session, product_id: int, requested_by: Optional[str] = None) -> "models.PurchaseOrder":
     """Run the full analysis pipeline and persist a draft awaiting approval.
 
@@ -138,13 +149,7 @@ def create_draft(db: Session, product_id: int, requested_by: Optional[str] = Non
     if not product:
         raise AgentWorkflowError("Product not found.", status_code=404)
 
-    existing = (
-        db.query(models.PurchaseOrder)
-        .filter(models.PurchaseOrder.product_id == product.id)
-        .filter(models.PurchaseOrder.status == "awaiting_approval")
-        .order_by(models.PurchaseOrder.created_at.desc())
-        .first()
-    )
+    existing = _awaiting_draft(db, product.id)
     if existing:
         _log(
             db, purchase_order_id=existing.id, product_id=product.id,
@@ -221,7 +226,22 @@ def create_draft(db: Session, product_id: int, requested_by: Optional[str] = Non
             requested_by=requested_by,
         )
         db.add(order)
-        db.commit()
+        try:
+            db.commit()
+        except IntegrityError:
+            # Another request created this product's draft between our check
+            # above and this insert; the unique index rejected the duplicate.
+            db.rollback()
+            existing = _awaiting_draft(db, product.id)
+            if existing is None:
+                raise
+            _log(
+                db, purchase_order_id=existing.id, product_id=product.id,
+                action_type="draft_created", status="skipped",
+                message=f"Draft #{existing.id} was created by a concurrent request; reusing it.",
+                actor=requested_by or "agent",
+            )
+            return existing
         db.refresh(order)
 
         _log(
