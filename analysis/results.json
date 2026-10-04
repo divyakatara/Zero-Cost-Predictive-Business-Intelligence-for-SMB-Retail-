@@ -1,0 +1,777 @@
+{
+  "dataset": {
+    "sheets": {
+      "retail_sales": {
+        "rows": 3650,
+        "columns": [
+          "sale_date",
+          "branch_id",
+          "product_id",
+          "quantity_sold",
+          "price",
+          "promo",
+          "weekday",
+          "month",
+          "sales_amount",
+          "cost_price",
+          "total_cost",
+          "profit",
+          "lag_1",
+          "lag_7",
+          "is_weekend"
+        ]
+      },
+      "Transactions": {
+        "rows": 3650,
+        "columns": [
+          "transaction_id",
+          "sale_date",
+          "product_id",
+          "branch_id",
+          "quantity_sold",
+          "sales_amount",
+          "current_stock",
+          "reorder_level",
+          "supplier_id",
+          "price",
+          "promo",
+          "weekday",
+          "month",
+          "cost_price",
+          "total_cost",
+          "profit",
+          "lag_7",
+          "is_weekend"
+        ]
+      },
+      "products": {
+        "rows": 10,
+        "columns": [
+          "product_id",
+          "product_name",
+          "category",
+          "price",
+          "cost_price",
+          "supplier_id"
+        ]
+      },
+      "supplier_stock": {
+        "rows": 20,
+        "columns": [
+          "supplier_id",
+          "product_id",
+          "branch_id",
+          "supplier_stock",
+          "reorder_level",
+          "stock_status",
+          "stock_utilization_rate",
+          "supply_risk_score"
+        ]
+      },
+      "suppliers": {
+        "rows": 5,
+        "columns": [
+          "supplier_id",
+          "supplier_name",
+          "location",
+          "rating",
+          "lead_time_days",
+          "contact_number",
+          "on_time_delivery_rate",
+          "quality_score",
+          "reliability_score"
+        ]
+      },
+      "inventory sheet": {
+        "rows": 20,
+        "columns": [
+          "branch_id",
+          "product_id",
+          "supplier_id",
+          "current stock",
+          "reorder_level"
+        ]
+      },
+      "branches": {
+        "rows": 2,
+        "columns": [
+          "branch_id",
+          "branch_name",
+          "location"
+        ]
+      },
+      "Data Notes": {
+        "rows": 11,
+        "columns": [
+          "Area",
+          "Change"
+        ]
+      }
+    },
+    "transactions": 3650,
+    "date_range": [
+      "2023-01-01",
+      "2023-12-31"
+    ],
+    "distinct_days": 365,
+    "products": 10,
+    "branches": {
+      "store_1": 2920,
+      "store_2": 730
+    },
+    "suppliers_in_master": 5,
+    "suppliers_supplying_products": [
+      "supplier_1",
+      "supplier_2",
+      "supplier_3"
+    ],
+    "rows_per_product": 365,
+    "rows_per_product_day": 1,
+    "promo_share": 0.1025,
+    "quantity_sold": {
+      "count": 3650.0,
+      "mean": 34.47,
+      "std": 18.75,
+      "min": 2.0,
+      "25%": 20.0,
+      "50%": 32.0,
+      "75%": 45.0,
+      "max": 203.0
+    },
+    "total_revenue": 6625422.62,
+    "total_profit": 1987374.48,
+    "data_notes": [
+      {
+        "Area": "Transactions",
+        "Change": "Kept 3,650 transactions; transaction IDs remain unique and sale_date + product_id + branch_id is unique."
+      },
+      {
+        "Area": "Branches",
+        "Change": "Both store_1 and store_2 are represented."
+      },
+      {
+        "Area": "Products",
+        "Change": "Master price, cost price and supplier mapping aligned with transaction data."
+      },
+      {
+        "Area": "Financials",
+        "Change": "sales_amount, total_cost and profit are recalculated from quantity, price and cost_price."
+      },
+      {
+        "Area": "Calendar",
+        "Change": "weekday, month and is_weekend are derived from sale_date."
+      },
+      {
+        "Area": "Lag",
+        "Change": "lag_7 is recalculated per product and branch; lag_1 is refreshed in retail_sales."
+      },
+      {
+        "Area": "Inventory",
+        "Change": "Inventory snapshot is aligned with the latest transaction state for each branch/product."
+      },
+      {
+        "Area": "Supplier stock",
+        "Change": "Stock status, utilization and risk now vary based on stock coverage."
+      },
+      {
+        "Area": "Suppliers",
+        "Change": "Unique dummy contact numbers plus delivery/quality/reliability fields for supplier scoring."
+      },
+      {
+        "Area": "ML",
+        "Change": "Isolation Forest should use behavioral numeric features, not IDs. Decision Tree can use the same workbook with its own feature subset."
+      },
+      {
+        "Area": "Note",
+        "Change": "This is synthetic/demo data intended for a capstone prototype and evaluation."
+      }
+    ]
+  },
+  "decision_tree": {
+    "method": "Per-product DecisionTreeRegressor(max_depth=6, random_state=42); chronological split, last 20% of each product's days held out",
+    "features": [
+      "weekday",
+      "month",
+      "is_weekend",
+      "promo",
+      "lag_1",
+      "lag_7"
+    ],
+    "target": "quantity_sold (units per product per day)",
+    "pooled": {
+      "decision_tree": {
+        "mae": 5.391,
+        "rmse": 9.233,
+        "r2": 0.625
+      },
+      "baseline_lag_1": {
+        "mae": 7.407,
+        "rmse": 12.208,
+        "r2": 0.344
+      },
+      "baseline_lag_7": {
+        "mae": 6.615,
+        "rmse": 11.279,
+        "r2": 0.44
+      },
+      "baseline_train_mean": {
+        "mae": 9.177,
+        "rmse": 11.723,
+        "r2": 0.395
+      },
+      "test_rows": 720
+    },
+    "per_product": {
+      "item_1": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 5.862,
+          "rmse": 8.698,
+          "r2": 0.309
+        },
+        "baseline_lag_1": {
+          "mae": 8.875,
+          "rmse": 13.161,
+          "r2": -0.582
+        },
+        "baseline_lag_7": {
+          "mae": 7.806,
+          "rmse": 12.661,
+          "r2": -0.464
+        },
+        "baseline_train_mean": {
+          "mae": 12.434,
+          "rmse": 13.868,
+          "r2": -0.757
+        },
+        "test_mean_demand": 42.0,
+        "feature_importance": {
+          "weekday": 0.105,
+          "month": 0.08,
+          "is_weekend": 0.011,
+          "promo": 0.142,
+          "lag_1": 0.197,
+          "lag_7": 0.466
+        }
+      },
+      "item_2": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 6.109,
+          "rmse": 10.579,
+          "r2": 0.187
+        },
+        "baseline_lag_1": {
+          "mae": 10.333,
+          "rmse": 16.089,
+          "r2": -0.881
+        },
+        "baseline_lag_7": {
+          "mae": 7.833,
+          "rmse": 13.72,
+          "r2": -0.368
+        },
+        "baseline_train_mean": {
+          "mae": 11.005,
+          "rmse": 13.733,
+          "r2": -0.37
+        },
+        "test_mean_demand": 36.85,
+        "feature_importance": {
+          "weekday": 0.133,
+          "month": 0.42,
+          "is_weekend": 0.0,
+          "promo": 0.153,
+          "lag_1": 0.044,
+          "lag_7": 0.25
+        }
+      },
+      "item_3": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 4.918,
+          "rmse": 8.209,
+          "r2": 0.344
+        },
+        "baseline_lag_1": {
+          "mae": 7.778,
+          "rmse": 12.245,
+          "r2": -0.46
+        },
+        "baseline_lag_7": {
+          "mae": 6.833,
+          "rmse": 11.582,
+          "r2": -0.306
+        },
+        "baseline_train_mean": {
+          "mae": 11.77,
+          "rmse": 13.821,
+          "r2": -0.86
+        },
+        "test_mean_demand": 40.22,
+        "feature_importance": {
+          "weekday": 0.197,
+          "month": 0.305,
+          "is_weekend": 0.001,
+          "promo": 0.275,
+          "lag_1": 0.057,
+          "lag_7": 0.164
+        }
+      },
+      "item_4": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 8.274,
+          "rmse": 15.588,
+          "r2": -0.452
+        },
+        "baseline_lag_1": {
+          "mae": 10.25,
+          "rmse": 17.479,
+          "r2": -0.825
+        },
+        "baseline_lag_7": {
+          "mae": 8.333,
+          "rmse": 15.386,
+          "r2": -0.414
+        },
+        "baseline_train_mean": {
+          "mae": 11.884,
+          "rmse": 14.847,
+          "r2": -0.317
+        },
+        "test_mean_demand": 40.56,
+        "feature_importance": {
+          "weekday": 0.078,
+          "month": 0.08,
+          "is_weekend": 0.0,
+          "promo": 0.141,
+          "lag_1": 0.165,
+          "lag_7": 0.535
+        }
+      },
+      "item_5": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 7.31,
+          "rmse": 13.025,
+          "r2": -0.151
+        },
+        "baseline_lag_1": {
+          "mae": 9.431,
+          "rmse": 16.046,
+          "r2": -0.747
+        },
+        "baseline_lag_7": {
+          "mae": 8.583,
+          "rmse": 15.824,
+          "r2": -0.699
+        },
+        "baseline_train_mean": {
+          "mae": 9.723,
+          "rmse": 13.333,
+          "r2": -0.206
+        },
+        "test_mean_demand": 30.61,
+        "feature_importance": {
+          "weekday": 0.201,
+          "month": 0.443,
+          "is_weekend": 0.001,
+          "promo": 0.167,
+          "lag_1": 0.133,
+          "lag_7": 0.055
+        }
+      },
+      "item_6": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 5.783,
+          "rmse": 8.012,
+          "r2": 0.47
+        },
+        "baseline_lag_1": {
+          "mae": 8.542,
+          "rmse": 12.993,
+          "r2": -0.394
+        },
+        "baseline_lag_7": {
+          "mae": 7.986,
+          "rmse": 11.481,
+          "r2": -0.088
+        },
+        "baseline_train_mean": {
+          "mae": 12.746,
+          "rmse": 14.515,
+          "r2": -0.739
+        },
+        "test_mean_demand": 40.26,
+        "feature_importance": {
+          "weekday": 0.053,
+          "month": 0.146,
+          "is_weekend": 0.0,
+          "promo": 0.215,
+          "lag_1": 0.151,
+          "lag_7": 0.436
+        }
+      },
+      "item_7": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 4.168,
+          "rmse": 6.298,
+          "r2": -0.116
+        },
+        "baseline_lag_1": {
+          "mae": 4.569,
+          "rmse": 7.131,
+          "r2": -0.431
+        },
+        "baseline_lag_7": {
+          "mae": 5.056,
+          "rmse": 7.692,
+          "r2": -0.665
+        },
+        "baseline_train_mean": {
+          "mae": 4.827,
+          "rmse": 6.631,
+          "r2": -0.237
+        },
+        "test_mean_demand": 13.86,
+        "feature_importance": {
+          "weekday": 0.24,
+          "month": 0.336,
+          "is_weekend": 0.03,
+          "promo": 0.148,
+          "lag_1": 0.145,
+          "lag_7": 0.1
+        }
+      },
+      "item_8": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 3.73,
+          "rmse": 5.776,
+          "r2": 0.093
+        },
+        "baseline_lag_1": {
+          "mae": 5.361,
+          "rmse": 7.588,
+          "r2": -0.565
+        },
+        "baseline_lag_7": {
+          "mae": 4.5,
+          "rmse": 6.978,
+          "r2": -0.324
+        },
+        "baseline_train_mean": {
+          "mae": 5.709,
+          "rmse": 7.201,
+          "r2": -0.41
+        },
+        "test_mean_demand": 17.14,
+        "feature_importance": {
+          "weekday": 0.265,
+          "month": 0.426,
+          "is_weekend": 0.0,
+          "promo": 0.18,
+          "lag_1": 0.081,
+          "lag_7": 0.048
+        }
+      },
+      "item_9": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 3.762,
+          "rmse": 4.723,
+          "r2": -0.149
+        },
+        "baseline_lag_1": {
+          "mae": 4.181,
+          "rmse": 5.596,
+          "r2": -0.614
+        },
+        "baseline_lag_7": {
+          "mae": 5.097,
+          "rmse": 5.938,
+          "r2": -0.817
+        },
+        "baseline_train_mean": {
+          "mae": 4.596,
+          "rmse": 5.493,
+          "r2": -0.555
+        },
+        "test_mean_demand": 11.69,
+        "feature_importance": {
+          "weekday": 0.253,
+          "month": 0.355,
+          "is_weekend": 0.025,
+          "promo": 0.157,
+          "lag_1": 0.085,
+          "lag_7": 0.126
+        }
+      },
+      "item_10": {
+        "train_rows": 286,
+        "test_rows": 72,
+        "test_period_start_row": 286,
+        "decision_tree": {
+          "mae": 3.991,
+          "rmse": 5.032,
+          "r2": 0.137
+        },
+        "baseline_lag_1": {
+          "mae": 4.75,
+          "rmse": 6.06,
+          "r2": -0.252
+        },
+        "baseline_lag_7": {
+          "mae": 4.125,
+          "rmse": 5.237,
+          "r2": 0.065
+        },
+        "baseline_train_mean": {
+          "mae": 7.081,
+          "rmse": 8.22,
+          "r2": -1.303
+        },
+        "test_mean_demand": 20.21,
+        "feature_importance": {
+          "weekday": 0.118,
+          "month": 0.125,
+          "is_weekend": 0.0,
+          "promo": 0.241,
+          "lag_1": 0.05,
+          "lag_7": 0.466
+        }
+      }
+    }
+  },
+  "isolation_forest": {
+    "params": {
+      "n_estimators": 200,
+      "contamination": 0.02,
+      "random_state": 42
+    },
+    "features": [
+      "quantity_sold",
+      "sales_amount",
+      "current_stock",
+      "reorder_level",
+      "price",
+      "promo",
+      "cost_price",
+      "total_cost",
+      "profit",
+      "lag_7"
+    ],
+    "rows_scored": 3650,
+    "anomalies": 73,
+    "expected_from_contamination": 73.0,
+    "count_by_contamination": {
+      "0.01": 37,
+      "0.02": 73,
+      "0.05": 183
+    },
+    "seed_stability": {
+      "seeds": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "pairwise_jaccard_min": 0.759,
+      "pairwise_jaccard_mean": 0.833,
+      "flagged_by_every_seed": 59
+    },
+    "anomalies_per_product": {
+      "item_4": 18,
+      "item_6": 18,
+      "item_2": 14,
+      "item_3": 13,
+      "item_1": 7,
+      "item_5": 3
+    },
+    "anomalies_per_branch": {
+      "store_1": 59,
+      "store_2": 14
+    },
+    "promo_share_flagged": 0.726,
+    "promo_share_all": 0.1025,
+    "most_deviant_feature_counts": {
+      "promo": 29,
+      "quantity_sold": 26,
+      "total_cost": 10,
+      "lag_7": 6,
+      "profit": 2
+    }
+  },
+  "supplier_scoring": {
+    "components": {
+      "supplier_1": {
+        "average_cost": 34.43,
+        "quality_score": 92.0,
+        "lead_time_days": 3.0,
+        "reliability_score": 94.0,
+        "cost_score": 52.92,
+        "quality_norm": 83.33,
+        "delivery_score": 100.0,
+        "reliability_norm": 100.0
+      },
+      "supplier_2": {
+        "average_cost": 29.56,
+        "quality_score": 88.0,
+        "lead_time_days": 5.0,
+        "reliability_score": 90.0,
+        "cost_score": 100.0,
+        "quality_norm": 50.0,
+        "delivery_score": 50.0,
+        "reliability_norm": 60.0
+      },
+      "supplier_3": {
+        "average_cost": 39.91,
+        "quality_score": 82.0,
+        "lead_time_days": 7.0,
+        "reliability_score": 84.0,
+        "cost_score": 0.0,
+        "quality_norm": 0.0,
+        "delivery_score": 0.0,
+        "reliability_norm": 0.0
+      },
+      "supplier_4": {
+        "average_cost": 34.43,
+        "quality_score": 94.0,
+        "lead_time_days": 4.0,
+        "reliability_score": 93.0,
+        "cost_score": 52.92,
+        "quality_norm": 100.0,
+        "delivery_score": 75.0,
+        "reliability_norm": 90.0
+      },
+      "supplier_5": {
+        "average_cost": 34.43,
+        "quality_score": 86.0,
+        "lead_time_days": 6.0,
+        "reliability_score": 87.0,
+        "cost_score": 52.92,
+        "quality_norm": 33.33,
+        "delivery_score": 25.0,
+        "reliability_norm": 30.0
+      }
+    },
+    "average_cost_imputed_for": [
+      "supplier_4",
+      "supplier_5"
+    ],
+    "weight_sets": {
+      "production (30/30/20/20)": {
+        "order": [
+          "supplier_1",
+          "supplier_4",
+          "supplier_2",
+          "supplier_5",
+          "supplier_3"
+        ],
+        "scores": {
+          "supplier_1": 80.9,
+          "supplier_4": 78.9,
+          "supplier_2": 67.0,
+          "supplier_5": 36.9,
+          "supplier_3": 0.0
+        },
+        "kendall_tau_vs_production": 1.0,
+        "top_supplier": "supplier_1"
+      },
+      "equal (25/25/25/25)": {
+        "order": [
+          "supplier_1",
+          "supplier_4",
+          "supplier_2",
+          "supplier_5",
+          "supplier_3"
+        ],
+        "scores": {
+          "supplier_1": 84.1,
+          "supplier_4": 79.5,
+          "supplier_2": 65.0,
+          "supplier_5": 35.3,
+          "supplier_3": 0.0
+        },
+        "kendall_tau_vs_production": 1.0,
+        "top_supplier": "supplier_1"
+      },
+      "delivery-heavy (20/20/30/30)": {
+        "order": [
+          "supplier_1",
+          "supplier_4",
+          "supplier_2",
+          "supplier_5",
+          "supplier_3"
+        ],
+        "scores": {
+          "supplier_1": 87.3,
+          "supplier_4": 80.1,
+          "supplier_2": 63.0,
+          "supplier_5": 33.8,
+          "supplier_3": 0.0
+        },
+        "kendall_tau_vs_production": 1.0,
+        "top_supplier": "supplier_1"
+      },
+      "cost-heavy (50/20/15/15)": {
+        "order": [
+          "supplier_2",
+          "supplier_1",
+          "supplier_4",
+          "supplier_5",
+          "supplier_3"
+        ],
+        "scores": {
+          "supplier_2": 76.5,
+          "supplier_1": 73.1,
+          "supplier_4": 71.2,
+          "supplier_5": 41.4,
+          "supplier_3": 0.0
+        },
+        "kendall_tau_vs_production": 0.6,
+        "top_supplier": "supplier_2"
+      },
+      "quality-heavy (20/50/15/15)": {
+        "order": [
+          "supplier_4",
+          "supplier_1",
+          "supplier_2",
+          "supplier_5",
+          "supplier_3"
+        ],
+        "scores": {
+          "supplier_4": 85.3,
+          "supplier_1": 82.3,
+          "supplier_2": 61.5,
+          "supplier_5": 35.5,
+          "supplier_3": 0.0
+        },
+        "kendall_tau_vs_production": 0.8,
+        "top_supplier": "supplier_4"
+      }
+    }
+  }
+}
