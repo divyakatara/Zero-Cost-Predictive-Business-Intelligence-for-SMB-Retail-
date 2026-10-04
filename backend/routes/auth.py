@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 
 import jwt
@@ -16,7 +17,12 @@ router = APIRouter(prefix="/auth", tags=["Auth"])
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "dev-only-change-this-secret")
+# Tokens are signed with JWT_SECRET_KEY from backend/.env. Without one, a random
+# per-process key is used: tokens can't be forged from anything in the repo,
+# but every sign-in ends when the server restarts.
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY") or secrets.token_urlsafe(48)
+if not os.getenv("JWT_SECRET_KEY"):
+    print("WARNING: JWT_SECRET_KEY is not set; using a random key, so sessions end on restart.", flush=True)
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_MINUTES = 60
 
@@ -176,9 +182,11 @@ def login_user(
 
 @router.post("/admin-login")
 def admin_login(user: schemas.UserLogin):
-    admin_email = os.getenv("ADMIN_EMAIL", "admin@smarterp.com").strip().lower()
-    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
-    if user.email.strip().lower() != admin_email or user.password != admin_password:
+    admin_email = os.getenv("ADMIN_EMAIL", "").strip().lower()
+    admin_password = os.getenv("ADMIN_PASSWORD", "")
+    if not admin_email or not admin_password:
+        raise HTTPException(status_code=503, detail="Admin login is not configured on this server.")
+    if user.email.strip().lower() != admin_email or not secrets.compare_digest(user.password, admin_password):
         raise HTTPException(status_code=401, detail="Invalid admin credentials")
 
     user_data = {"id": 0, "name": "System Administrator", "email": admin_email, "role": "admin"}
