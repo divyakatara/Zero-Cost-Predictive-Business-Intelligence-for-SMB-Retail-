@@ -10,6 +10,7 @@ import models
 import schemas
 from database import get_db
 from routes.auth import get_current_user, require_admin
+from services import tenancy
 
 
 router = APIRouter(prefix="/business", tags=["Business"])
@@ -278,7 +279,11 @@ def list_businesses_for_admin(
     db: Session = Depends(get_db),
     _admin: dict = Depends(require_admin),
 ):
-    query = db.query(models.Business).order_by(models.Business.submitted_at.desc())
+    query = (
+        db.query(models.Business)
+        .filter(models.Business.is_demo.is_(False))
+        .order_by(models.Business.submitted_at.desc())
+    )
     if status:
         query = query.filter(models.Business.status == status)
     return [serialize_business(business) for business in query.all()]
@@ -293,7 +298,12 @@ def approve_business(
     business = _get_business_or_404(db, business_id)
     if business.status not in ("pending", "rejected"):
         raise HTTPException(status_code=409, detail=f"Cannot approve a business that is {business.status}.")
-    return _set_review(db, business, "approved", None)
+    approved = _set_review(db, business, "approved", None)
+    # A newly approved business starts with its own copy of the demo dataset,
+    # so its dashboards work straight away; it can clear or replace it later.
+    if not tenancy.business_has_data(db, business.id):
+        tenancy.copy_demo_data(db, business.id)
+    return approved
 
 
 @router.post("/{business_id}/reject")

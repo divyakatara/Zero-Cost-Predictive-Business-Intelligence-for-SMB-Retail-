@@ -8,6 +8,7 @@ from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
 
+from services import tenancy
 from routes import (
     agent,
     auth,
@@ -332,6 +333,50 @@ with engine.begin() as connection:
                 text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_data BYTEA")
             )
 
+# Multi-tenancy (TASK-12): every business-owned table gets a business_id.
+with engine.begin() as connection:
+    connection.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE"))
+    connection.execute(text("ALTER TABLE businesses ALTER COLUMN status SET DEFAULT 'pending'"))
+    for table, on_delete in (
+        ("products", "CASCADE"),
+        ("retail_sales", "CASCADE"),
+        ("inventory", "CASCADE"),
+        ("purchase_orders", "CASCADE"),
+        ("agent_actions", "CASCADE"),
+        ("suppliers", "SET NULL"),
+    ):
+        connection.execute(text(
+            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS business_id INTEGER "
+            f"REFERENCES businesses(id) ON DELETE {on_delete}"
+        ))
+        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table}_business_id ON {table} (business_id)"))
+    # product_code is unique per business, not globally.
+    connection.execute(text("DROP INDEX IF EXISTS ix_products_product_code"))
+    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_products_product_code ON products (product_code)"))
+    connection.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ux_products_business_product_code ON products (business_id, product_code)"
+    ))
+
+
+def backfill_demo_business():
+    """Create the demo business and give it every row that has no owner yet
+    (the dataset loaded before multi-tenancy existed)."""
+    db = SessionLocal()
+    try:
+        demo = tenancy.ensure_demo_business(db)
+    finally:
+        db.close()
+    with engine.begin() as connection:
+        for table in ("products", "retail_sales", "inventory", "purchase_orders", "agent_actions", "suppliers"):
+            connection.execute(
+                text(f"UPDATE {table} SET business_id = :demo WHERE business_id IS NULL"),
+                {"demo": demo.id},
+            )
+    return demo.id
+
+
+DEMO_BUSINESS_ID = backfill_demo_business()
+
 app = FastAPI(title="Smart ERP Backend")
 
 # Only the frontend may call the API from a browser. FRONTEND_ORIGINS in
@@ -351,20 +396,21 @@ app.add_middleware(
 )
 # Public routes: login and registration must be available before authentication.
 app.include_router(auth.router)
-# Protect application API routers with a verified Bearer JWT.
-protected_routers = [
-    anomaly.router,
-    business.router,
+# Business data APIs: every query is scoped to the caller's business
+# (services/tenancy.py). Admin is unscoped; supplier accounts are refused.
+business_data_routers = [
     business_pages.router,
     dashboard.router,
     sales.router,
     inventory.router,
-    supplier.router,
     data.router,
     chat.router,
     agent.router,
 ]
-for protected_router in protected_routers:
+for business_router in business_data_routers:
+    app.include_router(business_router, dependencies=[Depends(tenancy.scope_to_business)])
+# Other protected APIs: a verified Bearer JWT is enough (they check roles themselves).
+for protected_router in (anomaly.router, business.router, supplier.router):
     app.include_router(
         protected_router,
         dependencies=[Depends(auth.require_valid_token)],
@@ -375,6 +421,9 @@ for protected_router in protected_routers:
 def load_seed_csv_data():
     """Import CSV data into PostgreSQL on startup if it has not been loaded yet."""
     db = SessionLocal()
+    # The workbook is the demo business's data: scope the sync to it so the
+    # "already loaded?" check and any purge never touch other businesses.
+    db.info["business_id"] = DEMO_BUSINESS_ID
     try:
         print("Starting CSV sync...", flush=True)
         load_csv_tables(db)

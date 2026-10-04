@@ -428,10 +428,10 @@ export default function SAnalyticsPage({ user }) {
               margin: 0,
             }}
           >
-            Retail Branches Buying Your Products
+            Retailers Buying Your Products
           </h2>
           <p style={{ fontSize: 12, color: C.textDim, margin: "6px 0 0" }}>
-            Orders and spending per branch in the selected period
+            Orders and spending per retailer branch in the selected period
           </p>
         </div>
 
@@ -447,7 +447,7 @@ export default function SAnalyticsPage({ user }) {
         >
           <thead>
             <tr>
-              {["Branch", "Orders", "Spend", "Last Order", "Status"].map((h) => (
+              {["Retailer · Branch", "Orders", "Spend", "Last Order", "Status"].map((h) => (
                 <th key={h} style={thStyle}>
                   {h}
                 </th>

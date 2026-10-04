@@ -61,7 +61,8 @@ def test_analytics_all_time_counts_only_own_sales(db, catalog):
     weekdays = {d["name"]: d["value"] for d in result["orderTrendData"]}
     assert weekdays["Mon"] == 2 and weekdays["Tue"] == 1
     assert [p["name"] for p in result["revenueTrend"]] == ["Nov", "Dec"]
-    assert [b["name"] for b in result["buyers"]] == ["store_1", "store_2"]
+    # Buyers are "<retailer> · <branch>"; these sales have no owning business.
+    assert [b["name"] for b in result["buyers"]] == ["Unknown retailer · store_1", "Unknown retailer · store_2"]
 
 
 def test_analytics_month_window_uses_latest_month(db, catalog):

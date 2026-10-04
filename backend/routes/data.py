@@ -1,14 +1,15 @@
 import io
-from typing import List, Optional
+from typing import List
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
-from csv_loader import load_excel_tables
 import models
 import schemas
 from database import get_db
+from routes.auth import get_current_user
+from services import tenancy
 
 router = APIRouter(prefix="/api/data", tags=["Data Connection"])
 
@@ -31,68 +32,103 @@ def supplier_to_dataset_row(supplier: models.Supplier) -> dict:
     }
 
 
+def _own_business_id(db: Session) -> int:
+    """The caller's business. Write endpoints refuse unscoped callers (the
+    admin), so nothing here can ever touch every business's data at once."""
+    business_id = db.info.get("business_id")
+    if business_id is None:
+        raise HTTPException(status_code=403, detail="Only a business account can change its own data.")
+    return business_id
+
+
 @router.get("/status")
 def get_data_status(db: Session = Depends(get_db)):
-    """Return data connection status and current database row counts."""
+    """Data connection status and row counts: the caller's business, or the
+    whole platform for the admin."""
     sales_count = db.query(models.Sale).count()
     products_count = db.query(models.Product).count()
     suppliers_count = db.query(models.Supplier).count()
     is_connected = sales_count > 0 and products_count > 0
+
+    latest_import = (
+        db.query(models.ImportLog).order_by(models.ImportLog.imported_at.desc()).first()
+        if db.info.get("business_id") is not None
+        else None
+    )
+    if not is_connected:
+        dataset_name = "None"
+    elif latest_import is not None:
+        dataset_name = latest_import.filename
+    else:
+        dataset_name = "Capstone_ERP_Cleaned_Final (1).xlsx (demo dataset)"
 
     return {
         "connected": is_connected,
         "sales_count": sales_count,
         "products_count": products_count,
         "suppliers_count": suppliers_count,
-        "dataset_name": "Capstone_ERP_Cleaned_Final (1).xlsx" if is_connected else "None",
+        "dataset_name": dataset_name,
     }
 
 
 @router.post("/load-demo")
 def load_demo_dataset(db: Session = Depends(get_db)):
-    """Load the demo ERP workbook dataset (Capstone_ERP_Cleaned_Final (1).xlsx)."""
+    """Replace the caller's data with a fresh copy of the demo dataset."""
+    business_id = _own_business_id(db)
     try:
-        # Force reload demo workbook
-        db.query(models.Sale).delete()
-        db.query(models.Product).delete()
-        db.query(models.Supplier).delete()
-        db.commit()
-
-        load_excel_tables(db)
-
-        sales_count = db.query(models.Sale).count()
-        products_count = db.query(models.Product).count()
-        suppliers_count = db.query(models.Supplier).count()
-
-        return {
-            "message": "Demo dataset loaded successfully",
-            "sales_count": sales_count,
-            "products_count": products_count,
-            "suppliers_count": suppliers_count,
-        }
+        copied = tenancy.copy_demo_data(db, business_id)
     except Exception as exc:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to load demo dataset: {exc}")
+    return {
+        "message": "Demo dataset loaded successfully",
+        "sales_count": copied["sales"],
+        "products_count": copied["products"],
+        "suppliers_count": db.query(models.Supplier).count(),
+    }
 
 
 @router.post("/clear")
 def clear_business_data(db: Session = Depends(get_db)):
-    """Clear all business data (sales, products, suppliers) to test No Data Connected state."""
+    """Clear the caller's sales, products and inventory (other businesses and
+    the shared supplier marketplace are untouched)."""
+    business_id = _own_business_id(db)
     try:
-        db.query(models.Sale).delete()
-        db.query(models.Product).delete()
-        db.query(models.Supplier).delete()
-        db.commit()
+        tenancy.clear_business_data(db, business_id)
         return {"message": "All business data cleared successfully", "connected": False}
     except Exception as exc:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to clear data: {exc}")
+
+
+@router.get("/history")
+def import_history(db: Session = Depends(get_db)):
+    """Past imports of the caller's business, newest first."""
+    _own_business_id(db)
+    logs = db.query(models.ImportLog).order_by(models.ImportLog.imported_at.desc()).all()
+    return [
+        {
+            "id": log.id,
+            "filename": log.filename,
+            "row_count": log.row_count,
+            "products_count": log.products_count,
+            "imported_by": log.imported_by,
+            "imported_at": log.imported_at.isoformat() if log.imported_at else None,
+        }
+        for log in logs
+    ]
 
 
 @router.post("/import")
 async def import_user_dataset(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    """Upload and validate user Excel/CSV dataset before importing into database."""
+    """Validate an Excel/CSV dataset and replace the caller's data with it.
+    Only the caller's rows are deleted; suppliers are a shared marketplace, so
+    a suppliers sheet in the file is not imported."""
+    business_id = _own_business_id(db)
     filename = file.filename or "dataset"
     contents = await file.read()
 
@@ -111,7 +147,12 @@ async def import_user_dataset(
 
         # Check required sheets/columns
         # Target required columns for sales/transactions: sale_date, product_id, quantity_sold (or quantity), sales_amount (or price/revenue)
-        sales_df = df_dict.get("retail_sales") or df_dict.get("Transactions") or list(df_dict.values())[0]
+        # (A DataFrame can't be used with `or`: pandas refuses to give it a truth value.)
+        sales_df = next(
+            (df_dict[name] for name in ("retail_sales", "Transactions") if name in df_dict),
+            list(df_dict.values())[0],
+        )
+        sales_df.columns = [str(c).strip().lower() for c in sales_df.columns]
         cols = [str(c).strip().lower() for c in sales_df.columns]
 
         required_columns = ["sale_date", "product_id"]
@@ -123,11 +164,8 @@ async def import_user_dataset(
                 detail=f"Column validation failed for '{filename}'. Missing required columns: {missing}. Expected columns like: sale_date, product_id, quantity_sold, sales_amount.",
             )
 
-        # Clear old records and populate imported records
-        db.query(models.Sale).delete()
-        db.query(models.Product).delete()
-        db.query(models.Supplier).delete()
-        db.commit()
+        # Replace this business's records only.
+        tenancy.clear_business_data(db, business_id)
 
         # Load products if present
         if "products" in df_dict:
@@ -146,28 +184,19 @@ async def import_user_dataset(
                 )
             db.commit()
 
-        # Load suppliers if present
-        if "suppliers" in df_dict:
-            supp_df = df_dict["suppliers"]
-            for _, r in supp_df.iterrows():
-                s_code = str(r.get("supplier_id", "supp")).strip()
-                db.add(
-                    models.Supplier(
-                        supplier_code=s_code,
-                        supplier_name=str(r.get("supplier_name", s_code)).strip(),
-                        name=str(r.get("supplier_name", s_code)).strip(),
-                        location=str(r.get("location", "")).strip() if pd.notna(r.get("location")) else None,
-                        rating=float(r.get("rating", 4.0)) if pd.notna(r.get("rating")) else 4.0,
-                        lead_time=int(r.get("lead_time_days", 3)) if pd.notna(r.get("lead_time_days")) else 3,
-                    )
-                )
-            db.commit()
+        # Products that appear only in the sales sheet still need a product row.
+        known_codes = {code for (code,) in db.query(models.Product.product_code).all()}
+        for code in sorted({str(c).strip() for c in sales_df["product_id"].dropna()} - known_codes):
+            db.add(models.Product(product_code=code, name=code, category="General"))
+        db.commit()
 
         # Load sales records
         prod_map = {p.product_code: p.id for p in db.query(models.Product).all()}
         sales_records = []
         for _, r in sales_df.iterrows():
             s_date = pd.to_datetime(r.get("sale_date")).date() if pd.notna(r.get("sale_date")) else None
+            if s_date is None:
+                continue  # a sale without a date can't be placed on any chart
             p_code = str(r.get("product_id", "")).strip() if pd.notna(r.get("product_id")) else "item_1"
             qty = int(float(r.get("quantity_sold") or r.get("quantity") or 1))
             rev = float(r.get("sales_amount") or r.get("revenue") or r.get("price", 0) * qty)
@@ -175,6 +204,7 @@ async def import_user_dataset(
 
             sales_records.append(
                 models.Sale(
+                    business_id=business_id,  # bulk save skips the tenancy flush hook
                     product_id=prod_map.get(p_code),
                     quantity=qty,
                     quantity_sold=qty,
@@ -193,7 +223,14 @@ async def import_user_dataset(
 
         if sales_records:
             db.bulk_save_objects(sales_records)
-            db.commit()
+        db.add(models.ImportLog(
+            business_id=business_id,
+            filename=filename,
+            row_count=len(sales_records),
+            products_count=db.query(models.Product).count(),
+            imported_by=current_user.get("sub"),
+        ))
+        db.commit()
 
         return {
             "message": f"Successfully validated and imported '{filename}'. Loaded {len(sales_records)} sales rows.",
@@ -206,6 +243,7 @@ async def import_user_dataset(
     except HTTPException:
         raise
     except Exception as exc:
+        db.rollback()
         raise HTTPException(
             status_code=400,
             detail=f"Error parsing dataset file '{filename}': {exc}",

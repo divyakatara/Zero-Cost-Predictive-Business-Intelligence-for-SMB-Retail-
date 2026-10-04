@@ -69,7 +69,9 @@ export default function SupplierDashboard({ user, onLogout }) {
         const response = await fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/inventory`);
         if (!ignore && response?.items) {
           const mapped = response.items.map(item => ({
+            key: item.product_id,
             product: item.name || item.id,
+            retailer: item.retailer,
             stock: item.qty != null ? item.qty.toLocaleString() : "No data",
             reorder: item.reorder || 0,
             status: item.status === "critical" ? "critical" : item.status === "low" ? "low" : "ok",
@@ -175,7 +177,7 @@ export default function SupplierDashboard({ user, onLogout }) {
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                    {["Product", "Stock", "Reorder Lvl", "Status"].map(h => (
+                    {["Product", "Retailer", "Stock", "Reorder Lvl", "Status"].map(h => (
                       <th key={h} style={{ textAlign: "left", padding: "6px 8px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>{h}</th>
                     ))}
                   </tr>
@@ -183,7 +185,7 @@ export default function SupplierDashboard({ user, onLogout }) {
                 <tbody>
                   {(loading || !requirements.length) && (
                     <tr>
-                      <td colSpan={4} style={{ padding: "20px 8px", fontSize: 13, color: C.textDim, textAlign: "center" }}>
+                      <td colSpan={5} style={{ padding: "20px 8px", fontSize: 13, color: C.textDim, textAlign: "center" }}>
                         {!supplierId ? "This account is not linked to a supplier ID." : loading ? "Loading your products…" : "No products are linked to your supplier ID yet."}
                       </td>
                     </tr>
@@ -191,8 +193,9 @@ export default function SupplierDashboard({ user, onLogout }) {
                   {requirements.map((r) => {
                     const s = statusStyle[r.status];
                     return (
-                      <tr key={r.product} style={{ borderBottom: `1px solid ${C.border}44` }}>
+                      <tr key={r.key} style={{ borderBottom: `1px solid ${C.border}44` }}>
                         <td style={{ padding: "12px 8px", fontWeight: 600, fontSize: 13, color: C.text }}>{r.product}</td>
+                        <td style={{ padding: "12px 8px", fontSize: 12, color: C.textMuted }}>{r.retailer}</td>
                         <td style={{ padding: "12px 8px", fontSize: 13, color: C.textMuted }}>{r.stock}</td>
                         <td style={{ padding: "12px 8px", fontSize: 13, color: C.textMuted, fontFamily: "monospace" }}>{r.reorder}</td>
                         <td style={{ padding: "12px 8px" }}>
