@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getBusinesses, approveBusiness, rejectBusiness, revokeBusiness, subscribeBusinessChanges } from "./businessStore";
+import { listBusinessesForAdmin, approveBusiness, rejectBusiness, revokeBusiness } from "./businessStore";
 import ChatWidget from "./ChatWidget";
 import { apiFetch, getAuthToken } from "./api";
 
@@ -59,37 +59,57 @@ export default function AdminApprovalPage({ onLogout }) {
   const [businesses, setBusinesses] = useState([]);
   const [tab, setTab] = useState("pending");
   const [activeNav, setActiveNav] = useState("Approvals");
-  const [rejectingEmail, setRejectingEmail] = useState(null);
+  const [rejectingId, setRejectingId] = useState(null);
   const [reason, setReason] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [busyId, setBusyId] = useState(null);
 
-  const refresh = () => setBusinesses(getBusinesses());
+  async function refresh() {
+    try {
+      setBusinesses(await listBusinessesForAdmin());
+      setLoadError("");
+    } catch (err) {
+      setLoadError(err.message || "Could not load business registrations.");
+    }
+  }
 
+  // Poll so registrations submitted elsewhere show up without a reload.
   useEffect(() => {
     refresh();
-    const unsubscribe = subscribeBusinessChanges(() => refresh());
-    return () => unsubscribe();
+    const timer = setInterval(refresh, 15000);
+    return () => clearInterval(timer);
   }, []);
 
-  const handleApprove = (email) => {
-    approveBusiness(email);
-    refresh();
-  };
+  async function runAction(businessId, action) {
+    setBusyId(businessId);
+    setActionError("");
+    try {
+      const updated = await action();
+      setBusinesses((list) => list.map((b) => (b.id === updated.id ? updated : b)));
+      return true;
+    } catch (err) {
+      setActionError(err.message || "The action failed. Please try again.");
+      return false;
+    } finally {
+      setBusyId(null);
+    }
+  }
 
-  const handleRevoke = (email) => {
-    revokeBusiness(email);
-    refresh();
-  };
+  const handleApprove = (id) => runAction(id, () => approveBusiness(id));
 
-  const handleRejectConfirm = (email) => {
-    rejectBusiness(email, reason);
-    setRejectingEmail(null);
-    setReason("");
-    refresh();
+  const handleRevoke = (id) => runAction(id, () => revokeBusiness(id));
+
+  const handleRejectConfirm = async (id) => {
+    if (await runAction(id, () => rejectBusiness(id, reason))) {
+      setRejectingId(null);
+      setReason("");
+    }
   };
 
   const openDocument = (docData, docName) => {
     if (!docData) {
-      alert(`GST Certificate "${docName || "file"}" is recorded as uploaded.`);
+      setActionError(`GST certificate "${docName || "file"}" was recorded by name only; the file itself is not stored on the server.`);
       return;
     }
     const win = window.open();
@@ -253,6 +273,12 @@ export default function AdminApprovalPage({ onLogout }) {
           </div>
         </div>
 
+        {(loadError || actionError) && (
+          <div style={{ background: C.dangerBg, color: C.danger, border: "1px solid #f0c8c0", borderRadius: 10, padding: "12px 16px", fontSize: 12, marginBottom: 16 }}>
+            {loadError || actionError}
+          </div>
+        )}
+
         {/* Empty state */}
         {filtered.length === 0 && (
           <div style={{
@@ -271,7 +297,7 @@ export default function AdminApprovalPage({ onLogout }) {
             }) : "Recently";
 
             return (
-              <div key={b.userEmail || b.email} style={{
+              <div key={b.id} style={{
                 background: C.card, borderRadius: 12, padding: "24px",
                 border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
               }}>
@@ -325,7 +351,7 @@ export default function AdminApprovalPage({ onLogout }) {
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, paddingTop: 12, borderTop: `1px solid ${C.border}` }}>
                   {b.status === "pending" && (
                     <>
-                      {rejectingEmail === (b.userEmail || b.email) ? (
+                      {rejectingId === b.id ? (
                         <div style={{ display: "flex", gap: 10, alignItems: "center", width: "100%" }}>
                           <input
                             autoFocus
@@ -337,22 +363,22 @@ export default function AdminApprovalPage({ onLogout }) {
                               background: C.bg, fontSize: 12, fontFamily: "'IBM Plex Sans', sans-serif", outline: "none",
                             }}
                           />
-                          <button onClick={() => handleRejectConfirm(b.userEmail || b.email)} style={{
+                          <button disabled={busyId === b.id} onClick={() => handleRejectConfirm(b.id)} style={{ opacity: busyId === b.id ? 0.6 : 1,
                             background: C.danger, color: "#fff", border: "none", borderRadius: 8,
                             padding: "9px 16px", fontSize: 12, fontWeight: 600, cursor: "pointer",
                           }}>Confirm Reject</button>
-                          <button onClick={() => { setRejectingEmail(null); setReason(""); }} style={{
+                          <button onClick={() => { setRejectingId(null); setReason(""); }} style={{
                             background: "transparent", color: C.textDim, border: `1px solid ${C.border}`, borderRadius: 8,
                             padding: "9px 16px", fontSize: 12, cursor: "pointer",
                           }}>Cancel</button>
                         </div>
                       ) : (
                         <>
-                          <button onClick={() => setRejectingEmail(b.userEmail || b.email)} style={{
+                          <button onClick={() => setRejectingId(b.id)} style={{
                             background: "transparent", color: C.danger, border: `1px solid #f0c8c0`, borderRadius: 8,
                             padding: "9px 18px", fontSize: 12, fontWeight: 600, cursor: "pointer",
                           }}>Reject Business</button>
-                          <button onClick={() => handleApprove(b.userEmail || b.email)} style={{
+                          <button disabled={busyId === b.id} onClick={() => handleApprove(b.id)} style={{ opacity: busyId === b.id ? 0.6 : 1,
                             background: C.green, color: "#fff", border: "none", borderRadius: 8,
                             padding: "9px 22px", fontSize: 12, fontWeight: 600, cursor: "pointer",
                             boxShadow: "0 2px 8px rgba(74,122,73,0.2)",
@@ -363,14 +389,14 @@ export default function AdminApprovalPage({ onLogout }) {
                   )}
 
                   {b.status === "approved" && (
-                    <button onClick={() => handleRevoke(b.userEmail || b.email)} style={{
+                    <button disabled={busyId === b.id} onClick={() => handleRevoke(b.id)} style={{ opacity: busyId === b.id ? 0.6 : 1,
                       background: "transparent", color: C.danger, border: `1px solid #f0c8c0`, borderRadius: 8,
                       padding: "7px 14px", fontSize: 11, fontWeight: 600, cursor: "pointer",
                     }}>Revoke Approval</button>
                   )}
 
                   {b.status === "rejected" && (
-                    <button onClick={() => handleApprove(b.userEmail || b.email)} style={{
+                    <button disabled={busyId === b.id} onClick={() => handleApprove(b.id)} style={{ opacity: busyId === b.id ? 0.6 : 1,
                       background: C.green, color: "#fff", border: "none", borderRadius: 8,
                       padding: "7px 14px", fontSize: 11, fontWeight: 600, cursor: "pointer",
                     }}>Re-Approve Business</button>

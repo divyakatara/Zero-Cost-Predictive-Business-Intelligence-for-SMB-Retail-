@@ -266,3 +266,5 @@ class Business(Base):
 
     reviewed_at = Column(DateTime, nullable=True)
     rejection_reason = Column(Text, nullable=True)
+
+    owner = relationship("User")

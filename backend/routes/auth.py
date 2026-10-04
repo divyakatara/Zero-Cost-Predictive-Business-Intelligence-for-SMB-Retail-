@@ -65,6 +65,12 @@ def require_valid_token(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
+def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Administrator access required")
+    return current_user
+
+
 def issue_login_response(user_data: dict, message: str) -> dict:
     return {
         "message": message,

@@ -5,7 +5,7 @@ import AdminApprovalPage from "./AdminApprovalPage";
 import BusinessDashboard from "./BusinessDashboard";
 import BusinessStatusPage from "./BusinessStatusPage";
 import SupplierDashboard from "./SupplierDashboard";
-import { getBusinessByEmail, submitBusiness, subscribeBusinessChanges } from "./businessStore";
+import { getBusinessByEmail, submitBusiness } from "./businessStore";
 import { fetchJson, getAuthToken, setAuthToken } from "./api";
 
 export default function App() {
@@ -40,20 +40,22 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // Real-time updates when an admin approves/rejects in another tab. Reads the
-  // local cache only: re-fetching here would re-save the cache and re-fire this event.
+  // While a registration is waiting on (or was refused by) an admin, re-check
+  // the server so the owner sees the decision without logging in again.
+  const awaitingReview = user?.role === "business" && bizState === "has-record" && businessRecord?.status !== "approved";
   useEffect(() => {
-    if (user?.role !== "business" || !user?.email) return undefined;
-    const email = user.email.toLowerCase();
-    const unsubscribe = subscribeBusinessChanges((businesses) => {
-      const record = businesses.find((b) => (b.userEmail || "").toLowerCase() === email);
-      if (record) {
-        setBusinessRecord(record);
-        setBizState("has-record");
+    if (!awaitingReview || !user?.email) return undefined;
+    const email = user.email;
+    const timer = setInterval(async () => {
+      try {
+        const record = await getBusinessByEmail(email);
+        if (record) setBusinessRecord(record);
+      } catch {
+        /* keep the last known status; try again on the next tick */
       }
-    });
-    return unsubscribe;
-  }, [user?.role, user?.email]);
+    }, 10000);
+    return () => clearInterval(timer);
+  }, [awaitingReview, user?.email]);
 
   // Only use identity and role returned by the backend's token-verified session.
   async function applyVerifiedSession(userData) {
@@ -73,7 +75,12 @@ export default function App() {
     }
 
     setBizState("loading");
-    const existing = await getBusinessByEmail(userData.email);
+    let existing = null;
+    try {
+      existing = await getBusinessByEmail(userData.email);
+    } catch {
+      /* treat an unreachable lookup like "no registration yet" */
+    }
     setBusinessRecord(existing || null);
     setBizState(existing ? "has-record" : "needs-register");
   }
@@ -134,7 +141,7 @@ export default function App() {
 
     if (bizState === "has-record" && businessRecord) {
       // Only approved businesses reach the dashboard; pending/rejected see their status.
-      // The cross-tab subscription above re-renders this as soon as an admin decides.
+      // The status poll above re-renders this as soon as an admin decides.
       if (businessRecord.status !== "approved") {
         return (
           <BusinessStatusPage

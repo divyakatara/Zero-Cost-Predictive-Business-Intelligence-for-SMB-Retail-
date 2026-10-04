@@ -179,6 +179,7 @@ class BusinessRegisterCreate(BaseModel):
 class BusinessResponse(BaseModel):
     id: int
     owner_user_id: int
+    userEmail: Optional[str] = None
 
     businessName: str
     businessType: str
