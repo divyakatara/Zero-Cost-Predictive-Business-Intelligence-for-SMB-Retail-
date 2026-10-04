@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from routes.auth import get_current_user
 
 load_dotenv()
 
@@ -25,7 +26,9 @@ router = APIRouter(prefix="/api", tags=["Chat"])
 
 class ChatRequest(BaseModel):
     message: str
-    role: Optional[str] = "business"  # "business" or "admin"
+    # Ignored: the assistant's mode comes from the verified token's role, so a
+    # client can't unlock the admin assistant by sending role="admin".
+    role: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -114,6 +117,29 @@ def _get_erp_context(db: Session) -> tuple[str, bool]:
     return ("\n".join(lines), True)
 
 
+def _live_stats(db: Session) -> dict:
+    """The few figures the offline fallback quotes, read from the database."""
+    top_codes = [
+        code
+        for (code,) in db.query(models.Sale.product_code)
+        .filter(models.Sale.product_code.isnot(None))
+        .group_by(models.Sale.product_code)
+        .order_by(desc(func.sum(models.Sale.revenue)))
+        .limit(3)
+        .all()
+    ]
+    products = db.query(models.Product).all()
+    return {
+        "orders": db.query(func.count(models.Sale.id)).scalar() or 0,
+        "revenue": float(db.query(func.coalesce(func.sum(models.Sale.revenue), 0.0)).scalar() or 0.0),
+        "profit": float(db.query(func.coalesce(func.sum(models.Sale.profit), 0.0)).scalar() or 0.0),
+        "top_products": top_codes,
+        "products": len(products),
+        "low_stock": [p.product_code or p.name for p in products if (p.supplier_stock or 0) <= (p.reorder_level or 0)],
+        "suppliers": db.query(models.Supplier).count(),
+    }
+
+
 def _get_admin_context(db: Session) -> str:
     users_count = db.query(models.User).count()
     sales_count = db.query(models.Sale).count()
@@ -198,7 +224,7 @@ def _clean_reply(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def _fallback_reply(message: str, is_admin: bool, is_connected: bool) -> str:
+def _fallback_reply(message: str, is_admin: bool, is_connected: bool, stats: Optional[dict] = None) -> str:
     """Natural language fallback — no internal labels whatsoever."""
     msg = message.lower()
 
@@ -253,34 +279,41 @@ def _fallback_reply(message: str, is_admin: bool, is_connected: bool) -> str:
             "Go to Settings → Data Connection to upload your Excel or CSV file."
         )
 
-    # Data IS connected but Gemini API is unreachable/offline
+    # Data IS connected but Gemini API is unreachable/offline: answer from live figures.
+    stats = stats or {}
     if "top" in msg or "selling" in msg or "best" in msg:
+        top = ", ".join(stats.get("top_products") or []) or "not available yet"
         return (
-            "Your ERP is currently connected to your business dataset. "
-            "Your top revenue-generating products include Item 4, Item 3, and Item 6. "
+            f"Your top revenue-generating products are {top}. "
             "You can view the full sales breakdown and rank details in the Sales or Analytics section."
         )
     if "revenue" in msg or "sales" in msg or "profit" in msg:
         return (
-            "Your ERP is currently connected to your business dataset, tracking over 3,650 sales records. "
-            "Total revenue stands at ₹66,25,422.62 with a total profit of ₹19,87,374.48. "
+            f"Your ERP is tracking {stats.get('orders', 0):,} sales records. "
+            f"Total revenue stands at ₹{stats.get('revenue', 0.0):,.2f} with a total profit of ₹{stats.get('profit', 0.0):,.2f}. "
             "You can explore monthly trends and detailed charts in the Sales or Analytics section."
         )
     if "stock" in msg or "inventory" in msg or "restock" in msg:
+        low = stats.get("low_stock") or []
+        status = (
+            f"{len(low)} product(s) are at or below their reorder level: {', '.join(low)}."
+            if low
+            else "All current stock levels are above their reorder thresholds."
+        )
         return (
-            "Your ERP is connected to live inventory data across 10 SKUs. "
-            "All current stock levels are healthy and above reorder thresholds. "
-            "You can inspect live stock levels and reorder parameters in the Inventory section."
+            f"Your ERP is tracking {stats.get('products', 0)} products. {status} "
+            "You can inspect stock levels and reorder parameters in the Inventory section."
         )
     if "supplier" in msg:
         return (
-            "Your ERP is connected to 5 registered suppliers with live ratings and lead times. "
-            "Check the Supplier Marketplace section for detailed performance scores and order placements."
+            f"Your ERP has {stats.get('suppliers', 0)} registered suppliers with ratings and lead times. "
+            "Check the Supplier Marketplace section for performance scores."
         )
 
     return (
-        "Your ERP is currently connected to your business data, including 3,650 sales records, "
-        "10 products, and 5 suppliers. You can view full metrics across the Sales, Inventory, and Analytics sections."
+        f"Your ERP is connected to your business data: {stats.get('orders', 0):,} sales records, "
+        f"{stats.get('products', 0)} products, and {stats.get('suppliers', 0)} suppliers. "
+        "You can view full metrics across the Sales, Inventory, and Analytics sections."
     )
 
 
@@ -289,8 +322,12 @@ def _fallback_reply(message: str, is_admin: bool, is_connected: bool) -> str:
 # ---------------------------------------------------------------------------
 
 @router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest, db: Session = Depends(get_db)):
-    is_admin = (request.role or "").strip().lower() == "admin"
+def chat(
+    request: ChatRequest,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    is_admin = current_user.get("role") == "admin"
 
     if is_admin:
         context_str = _get_admin_context(db)
@@ -327,5 +364,6 @@ def chat(request: ChatRequest, db: Session = Depends(get_db)):
             pass
 
     # Safe fallback — always natural language, never internal labels
-    return ChatResponse(reply=_fallback_reply(request.message, is_admin, is_connected))
+    stats = _live_stats(db) if is_connected and not is_admin else None
+    return ChatResponse(reply=_fallback_reply(request.message, is_admin, is_connected, stats))
 
