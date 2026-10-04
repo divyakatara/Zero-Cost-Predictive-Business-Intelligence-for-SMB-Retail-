@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { fetchJson } from "./api";
 import {
   AreaChart,
   Area,
@@ -45,43 +46,16 @@ const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
 const filters = ["All Time", "This Month", "This Week"];
 
-/* ZERO DATA */
-const productData = [
-  { name: "Product A", value: 0 },
-  { name: "Product B", value: 0 },
-  { name: "Product C", value: 0 },
-  { name: "Product D", value: 0 },
-];
+const PERIODS = { "All Time": "all", "This Month": "month", "This Week": "week" };
 
-const orderTrendData = [
-  { name: "Mon", value: 0 },
-  { name: "Tue", value: 0 },
-  { name: "Wed", value: 0 },
-  { name: "Thu", value: 0 },
-  { name: "Fri", value: 0 },
-  { name: "Sat", value: 0 },
-  { name: "Sun", value: 0 },
-];
-
-const deliveryData = [
-  { name: "W1", onTime: 0, late: 0 },
-  { name: "W2", onTime: 0, late: 0 },
-  { name: "W3", onTime: 0, late: 0 },
-  { name: "W4", onTime: 0, late: 0 },
-];
-
-const kpis = [
-  { label: "Total Orders", value: "0", sub: "No data yet", accent: true },
-  { label: "Revenue Earned", value: "₹0", sub: "No data yet" },
-  { label: "Active Listings", value: "0", sub: "No data yet" },
-  { label: "On-Time Delivery", value: "0%", sub: "No data yet" },
-];
-
-const buyers = [
-  { name: "Buyer 1", orders: 0, spend: "₹0", date: "-", status: "No data" },
-  { name: "Buyer 2", orders: 0, spend: "₹0", date: "-", status: "No data" },
-  { name: "Buyer 3", orders: 0, spend: "₹0", date: "-", status: "No data" },
-];
+const emptyState = {
+  headerNote: "Loading demand for your products…",
+  kpis: [],
+  productData: [],
+  orderTrendData: [],
+  revenueTrend: [],
+  buyers: [],
+};
 
 /* SHARED CARD STYLE */
 const cardStyle = {
@@ -110,7 +84,7 @@ const tdStyle = {
 };
 
 /* TOOLTIP */
-const CustomTooltip = ({ active, payload, label }) => {
+const CustomTooltip = ({ active, payload, label, unit }) => {
   if (!active || !payload || !payload.length) return null;
 
   return (
@@ -130,7 +104,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 
       {payload.map((p) => (
         <p key={p.dataKey} style={{ margin: "4px 0" }}>
-          {p.dataKey}: <b>{p.value}</b>
+          {unit || p.dataKey}: <b>{Number(p.value).toLocaleString("en-IN")}</b>
         </p>
       ))}
     </div>
@@ -144,8 +118,22 @@ const axisTick = {
   fontFamily: "'IBM Plex Sans', sans-serif",
 };
 
-export default function SAnalyticsPage() {
+export default function SAnalyticsPage({ user }) {
+  const supplierId = user?.supplier_id;
   const [filter, setFilter] = useState("All Time");
+  const [data, setData] = useState(emptyState);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!supplierId) return undefined;
+    let ignore = false;
+    fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/analytics?period=${PERIODS[filter]}`)
+      .then((response) => { if (!ignore) { setData(response); setError(""); } })
+      .catch((err) => { if (!ignore) setError(err.message || "Could not load analytics."); });
+    return () => { ignore = true; };
+  }, [supplierId, filter]);
+
+  const { kpis, productData, orderTrendData, revenueTrend, buyers } = data;
 
   return (
     <div
@@ -207,7 +195,7 @@ export default function SAnalyticsPage() {
               fontSize: 12,
             }}
           >
-            Supplier performance overview · No data yet
+            {supplierId ? data.headerNote : "This account is not linked to a supplier ID"}
           </p>
         </div>
 
@@ -249,6 +237,12 @@ export default function SAnalyticsPage() {
           ))}
         </div>
       </div>
+
+      {error && (
+        <div style={{ marginBottom: 18, padding: "12px 14px", background: "#fdf0f0", border: "1px solid #f0c8c0", borderRadius: 10, color: "#b8543f", fontSize: 13 }}>
+          {error}
+        </div>
+      )}
 
       {/* KPI CARDS */}
       <div
@@ -332,11 +326,11 @@ export default function SAnalyticsPage() {
               margin: "0 0 20px",
             }}
           >
-            Product Performance
+            Units Sold by Product
           </h2>
 
           <ResponsiveContainer width="100%" height={230}>
-            <BarChart data={productData} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+            <BarChart data={productData} margin={{ top: 5, right: 8, left: -6, bottom: 0 }}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke={C.border}
@@ -344,7 +338,7 @@ export default function SAnalyticsPage() {
               />
               <XAxis dataKey="name" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis tick={axisTick} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip unit="Units sold" />} />
               <Bar dataKey="value" fill={C.green} radius={[5, 5, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
@@ -361,11 +355,11 @@ export default function SAnalyticsPage() {
               margin: "0 0 20px",
             }}
           >
-            Weekly Order Trend
+            Orders by Weekday
           </h2>
 
           <ResponsiveContainer width="100%" height={230}>
-            <LineChart data={orderTrendData} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+            <LineChart data={orderTrendData} margin={{ top: 5, right: 8, left: -6, bottom: 0 }}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 stroke={C.border}
@@ -373,7 +367,7 @@ export default function SAnalyticsPage() {
               />
               <XAxis dataKey="name" tick={axisTick} axisLine={false} tickLine={false} />
               <YAxis tick={axisTick} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
+              <Tooltip content={<CustomTooltip unit="Orders" />} />
               <Line
                 type="monotone"
                 dataKey="value"
@@ -387,7 +381,7 @@ export default function SAnalyticsPage() {
         </div>
       </div>
 
-      {/* DELIVERY CHART */}
+      {/* REVENUE TREND */}
       <div style={{ ...cardStyle, marginBottom: 22 }}>
         <h2
           style={{
@@ -398,33 +392,24 @@ export default function SAnalyticsPage() {
             margin: "0 0 20px",
           }}
         >
-          Delivery Performance
+          Revenue Trend
         </h2>
-
         <ResponsiveContainer width="100%" height={220}>
-          <AreaChart data={deliveryData} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
+          <AreaChart data={revenueTrend} margin={{ top: 5, right: 8, left: 6, bottom: 0 }}>
             <CartesianGrid
               strokeDasharray="3 3"
               stroke={C.border}
               vertical={false}
             />
             <XAxis dataKey="name" tick={axisTick} axisLine={false} tickLine={false} />
-            <YAxis tick={axisTick} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip />} />
+            <YAxis tick={axisTick} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${Math.round(v / 1000)}k`} />
+            <Tooltip content={<CustomTooltip unit="Revenue (₹)" />} />
             <Area
               type="monotone"
-              dataKey="onTime"
+              dataKey="value"
               stroke={C.green}
               fill={C.greenLight}
               fillOpacity={0.55}
-              strokeWidth={2}
-            />
-            <Area
-              type="monotone"
-              dataKey="late"
-              stroke="#aaa"
-              fill="#ddd"
-              fillOpacity={0.4}
               strokeWidth={2}
             />
           </AreaChart>
@@ -443,10 +428,10 @@ export default function SAnalyticsPage() {
               margin: 0,
             }}
           >
-            Buyer Overview
+            Retail Branches Buying Your Products
           </h2>
           <p style={{ fontSize: 12, color: C.textDim, margin: "6px 0 0" }}>
-            Orders and spending by buyer
+            Orders and spending per branch in the selected period
           </p>
         </div>
 
@@ -462,7 +447,7 @@ export default function SAnalyticsPage() {
         >
           <thead>
             <tr>
-              {["Buyer", "Orders", "Spend", "Last Order", "Status"].map((h) => (
+              {["Branch", "Orders", "Spend", "Last Order", "Status"].map((h) => (
                 <th key={h} style={thStyle}>
                   {h}
                 </th>

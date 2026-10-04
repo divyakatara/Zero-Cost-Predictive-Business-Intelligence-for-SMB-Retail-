@@ -1,3 +1,4 @@
+from collections import Counter, defaultdict
 from datetime import timedelta
 from typing import List
 
@@ -8,7 +9,14 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from database import get_db
-from routes.business_pages import classify_stock
+from routes.auth import get_current_user
+from routes.business_pages import (
+    ANALYTICS_PERIODS,
+    analytics_window,
+    build_inventory_overview,
+    build_sales_overview,
+    classify_stock,
+)
 
 router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 
@@ -110,6 +118,120 @@ def _pricing_suggestion(supplier, peer_cost):
         "impact": impact,
         "action": "No action needed",
         "reason": "Your average cost is within 5% of the supplier average.",
+    }
+
+
+def get_own_supplier(db: Session, supplier_code: str, current_user: dict) -> models.Supplier:
+    """The supplier record for supplier_code, if the caller may see it: the
+    admin may see any supplier, a supplier account only the one it is linked to."""
+    if current_user.get("role") == "supplier":
+        user = db.query(models.User).filter(models.User.email == current_user.get("sub")).first()
+        if user is None or user.supplier_code != supplier_code:
+            raise HTTPException(status_code=403, detail="You can only view your own supplier data.")
+    elif current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Supplier data is only available to that supplier.")
+    supplier = db.query(models.Supplier).filter(models.Supplier.supplier_code == supplier_code).first()
+    if supplier is None:
+        raise HTTPException(status_code=404, detail="No supplier record matches this supplier ID.")
+    return supplier
+
+
+def _product_codes(db: Session, supplier_code: str):
+    rows = db.query(models.Product.product_code).filter(models.Product.supplier_code == supplier_code).all()
+    return [code for (code,) in rows if code]
+
+
+@router.get("/{supplier_code}/inventory")
+def supplier_inventory(supplier_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Retailer stock of the products this supplier provides."""
+    get_own_supplier(db, supplier_code, current_user)
+    overview = build_inventory_overview(db, supplier_code=supplier_code)
+    overview["headerNote"] = f"Retailer stock of the {len(overview['items'])} products you supply - Live database data"
+    return overview
+
+
+@router.get("/{supplier_code}/sales")
+def supplier_sales(supplier_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Retail sales of this supplier's products (same shape as /business-pages/sales)."""
+    get_own_supplier(db, supplier_code, current_user)
+    overview = build_sales_overview(db, product_codes=_product_codes(db, supplier_code))
+    overview["headerNote"] = "Retail sales of the products you supply - Live database data"
+    return overview
+
+
+WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+
+@router.get("/{supplier_code}/analytics")
+def supplier_analytics(
+    supplier_code: str,
+    period: str = "all",
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """Demand for this supplier's products in the chosen period: orders,
+    revenue, per-product units, weekday pattern, revenue trend and the retail
+    branches buying them."""
+    supplier = get_own_supplier(db, supplier_code, current_user)
+    period = period if period in ANALYTICS_PERIODS else "all"
+    start, end, period_label = analytics_window(db, period)
+    product_codes = _product_codes(db, supplier_code)
+
+    query = db.query(
+        models.Sale.product_code, models.Sale.sale_date, models.Sale.branch_id,
+        models.Sale.quantity_sold, models.Sale.revenue,
+    ).filter(models.Sale.product_code.in_(product_codes))
+    if start is not None:
+        query = query.filter(models.Sale.sale_date >= start, models.Sale.sale_date <= end)
+    sales = query.all()
+
+    units_by_product = Counter()
+    orders_by_weekday = Counter()
+    revenue_by_bucket = defaultdict(float)
+    branches = defaultdict(lambda: {"orders": 0, "spend": 0.0, "last": None})
+    for code, sale_date, branch, units, revenue in sales:
+        units_by_product[code] += units or 0
+        if sale_date is not None:
+            orders_by_weekday[WEEKDAYS[sale_date.weekday()]] += 1
+            bucket = sale_date.strftime("%b") if period == "all" else sale_date.strftime("%d %b")
+            revenue_by_bucket[(sale_date.replace(day=1) if period == "all" else sale_date, bucket)] += revenue or 0.0
+        info = branches[branch or "Unknown branch"]
+        info["orders"] += 1
+        info["spend"] += revenue or 0.0
+        if sale_date is not None and (info["last"] is None or sale_date > info["last"]):
+            info["last"] = sale_date
+
+    latest = max((b["last"] for b in branches.values() if b["last"]), default=None)
+    total_revenue = sum(b["spend"] for b in branches.values())
+
+    return {
+        "headerNote": f"Demand for your products - {period_label} - Live database data",
+        "kpis": [
+            {"label": "Total Orders", "value": f"{len(sales):,}", "sub": "Retail orders of your products", "accent": True},
+            {"label": "Revenue Generated", "value": f"₹{total_revenue:,.0f}", "sub": "Retail revenue from your products"},
+            {"label": "Active Listings", "value": str(len(product_codes)), "sub": "Products you supply"},
+            {
+                "label": "On-Time Delivery",
+                "value": f"{supplier.on_time_delivery_rate:.0f}%" if supplier.on_time_delivery_rate is not None else "-",
+                "sub": "From your supplier record",
+            },
+        ],
+        "productData": [{"name": code, "value": units_by_product.get(code, 0)} for code in sorted(product_codes)],
+        "orderTrendData": [{"name": day, "value": orders_by_weekday.get(day, 0)} for day in WEEKDAYS],
+        "revenueTrend": [
+            {"name": label, "value": round(value, 2)}
+            for (_, label), value in sorted(revenue_by_bucket.items(), key=lambda item: item[0][0])
+        ],
+        "buyers": [
+            {
+                "name": name,
+                "orders": info["orders"],
+                "spend": f"₹{info['spend']:,.0f}",
+                "date": info["last"].strftime("%d %b %Y") if info["last"] else "-",
+                "status": "Active" if latest and info["last"] and (latest - info["last"]).days <= 30 else "Inactive",
+            }
+            for name, info in sorted(branches.items(), key=lambda item: -item[1]["spend"])
+        ],
     }
 
 

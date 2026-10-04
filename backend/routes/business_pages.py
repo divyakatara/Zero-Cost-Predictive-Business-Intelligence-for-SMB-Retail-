@@ -37,7 +37,15 @@ def predicted_revenue_expression():
 
 @router.get("/inventory")
 def inventory_overview(db: Session = Depends(get_db)):
-    products = db.query(models.Product).order_by(models.Product.product_code.asc()).all()
+    return build_inventory_overview(db)
+
+
+def build_inventory_overview(db: Session, supplier_code: Optional[str] = None):
+    """Stock rows for every product, or only those supplied by supplier_code."""
+    query = db.query(models.Product)
+    if supplier_code is not None:
+        query = query.filter(models.Product.supplier_code == supplier_code)
+    products = query.order_by(models.Product.product_code.asc()).all()
     rows = []
     critical_items = 0
     low_stock_items = 0
@@ -85,20 +93,55 @@ def inventory_overview(db: Session = Depends(get_db)):
 
 @router.get("/sales")
 def sales_overview(db: Session = Depends(get_db)):
-    latest_sale_date = db.query(func.max(models.Sale.sale_date)).scalar()
+    return build_sales_overview(db)
+
+
+def product_trends(db: Session, product_codes, latest_sale_date, days: int = 30):
+    """'up'/'down'/'flat' per product: units sold in the latest `days` days vs
+    the `days` before that, anchored on the latest sale date in the data."""
+    if not product_codes or latest_sale_date is None:
+        return {}
+    recent_start = latest_sale_date - timedelta(days=days - 1)
+    previous_start = recent_start - timedelta(days=days)
+    rows = (
+        db.query(models.Sale.product_code, models.Sale.sale_date, models.Sale.quantity_sold)
+        .filter(models.Sale.product_code.in_(product_codes))
+        .filter(models.Sale.sale_date >= previous_start, models.Sale.sale_date <= latest_sale_date)
+        .all()
+    )
+    recent = defaultdict(int)
+    previous = defaultdict(int)
+    for code, sale_date, units in rows:
+        (recent if sale_date >= recent_start else previous)[code] += units or 0
+    return {
+        code: "up" if recent[code] > previous[code] else "down" if recent[code] < previous[code] else "flat"
+        for code in product_codes
+    }
+
+
+def build_sales_overview(db: Session, product_codes=None):
+    """Sales KPIs, charts and top products for all sales, or only sales of the
+    given product codes (used for a supplier's own products)."""
+
+    def scoped(query):
+        if product_codes is not None:
+            query = query.filter(models.Sale.product_code.in_(product_codes))
+        return query
+
+    latest_sale_date = scoped(db.query(func.max(models.Sale.sale_date))).scalar()
     predicted_revenue = predicted_revenue_expression()
 
-    total_revenue = db.query(func.coalesce(func.sum(models.Sale.revenue), 0.0)).scalar() or 0.0
-    total_orders = db.query(func.count(models.Sale.id)).scalar() or 0
+    total_revenue = scoped(db.query(func.coalesce(func.sum(models.Sale.revenue), 0.0))).scalar() or 0.0
+    total_orders = scoped(db.query(func.count(models.Sale.id))).scalar() or 0
     avg_order_value = total_revenue / total_orders if total_orders else 0.0
 
     monthly_rows = (
-        db.query(
+        scoped(db.query(
             func.date_trunc("month", models.Sale.sale_date).label("month_start"),
             func.coalesce(func.sum(models.Sale.revenue), 0.0).label("actual"),
             func.coalesce(func.sum(predicted_revenue), 0.0).label("predicted"),
         )
-        .filter(models.Sale.sale_date.isnot(None))
+        .filter(models.Sale.sale_date.isnot(None)))
         .group_by("month_start")
         .all()
     )
@@ -121,13 +164,13 @@ def sales_overview(db: Session = Depends(get_db)):
     if latest_sale_date:
         week_number_expr = (func.floor((func.extract("day", models.Sale.sale_date) - 1) / 7) + 1).label("week_number")
         latest_month_rows = (
-            db.query(
+            scoped(db.query(
                 week_number_expr,
                 func.coalesce(func.sum(models.Sale.revenue), 0.0).label("actual"),
                 func.coalesce(func.sum(predicted_revenue), 0.0).label("predicted"),
             )
             .filter(func.extract("year", models.Sale.sale_date) == latest_sale_date.year)
-            .filter(func.extract("month", models.Sale.sale_date) == latest_sale_date.month)
+            .filter(func.extract("month", models.Sale.sale_date) == latest_sale_date.month))
             .group_by(week_number_expr)
             .all()
         )
@@ -151,13 +194,13 @@ def sales_overview(db: Session = Depends(get_db)):
         start_of_week = latest_sale_date - timedelta(days=latest_sale_date.weekday())
         day_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
         week_rows = (
-            db.query(
+            scoped(db.query(
                 models.Sale.sale_date,
                 func.coalesce(func.sum(models.Sale.revenue), 0.0).label("actual"),
                 func.coalesce(func.sum(predicted_revenue), 0.0).label("predicted"),
             )
             .filter(models.Sale.sale_date >= start_of_week)
-            .filter(models.Sale.sale_date <= start_of_week + timedelta(days=6))
+            .filter(models.Sale.sale_date <= start_of_week + timedelta(days=6)))
             .group_by(models.Sale.sale_date)
             .all()
         )
@@ -178,25 +221,26 @@ def sales_overview(db: Session = Depends(get_db)):
             )
 
     top_product_rows = (
-        db.query(
+        scoped(db.query(
             models.Sale.product_code,
             func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
             func.coalesce(func.sum(models.Sale.quantity_sold), 0).label("units"),
         )
-        .filter(models.Sale.product_code.isnot(None))
+        .filter(models.Sale.product_code.isnot(None)))
         .group_by(models.Sale.product_code)
         .order_by(desc("revenue"))
         .limit(5)
         .all()
     )
+    trends = product_trends(db, [row.product_code for row in top_product_rows], latest_sale_date)
     top_products = [
         {
             "name": row.product_code,
             "revenue": currency_value(row.revenue),
             "units": int(row.units or 0),
-            "trend": "up" if index % 2 == 0 else "down",
+            "trend": trends.get(row.product_code, "flat"),
         }
-        for index, row in enumerate(top_product_rows)
+        for row in top_product_rows
     ]
     top_products_chart = [{"name": row["name"], "revenue": row["revenue"]} for row in top_products]
 
