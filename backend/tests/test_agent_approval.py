@@ -56,3 +56,51 @@ def test_a_rejected_draft_can_never_become_an_order(db, draft):
         agent_orchestrator.approve_draft(db, draft.id)
 
     assert db.query(models.PurchaseOrder).filter(models.PurchaseOrder.status == "created").count() == 0
+
+
+def test_cancel_withdraws_the_draft_and_logs_it(db, draft):
+    order = agent_orchestrator.cancel_draft(db, draft.id, cancelled_by="alpha@shop.com")
+
+    assert order.status == "cancelled"
+    assert order.decided_by == "alpha@shop.com"
+    assert _action_types(db, order) == ["cancelled"]
+
+
+def test_cancelled_draft_is_terminal(db, draft):
+    agent_orchestrator.cancel_draft(db, draft.id)
+
+    for action in (
+        lambda: agent_orchestrator.approve_draft(db, draft.id),
+        lambda: agent_orchestrator.reject_draft(db, draft.id),
+        lambda: agent_orchestrator.cancel_draft(db, draft.id),
+    ):
+        with pytest.raises(AgentWorkflowError) as error:
+            action()
+        assert error.value.status_code == 409
+
+
+def test_only_awaiting_drafts_can_be_cancelled(db, draft):
+    agent_orchestrator.approve_draft(db, draft.id)
+
+    with pytest.raises(AgentWorkflowError) as error:
+        agent_orchestrator.cancel_draft(db, draft.id)
+    assert error.value.status_code == 409
+
+
+def test_cancel_route_returns_409_after_terminal_state(db, draft):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from database import get_db
+    from routes.agent import router
+
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_db] = lambda: db
+    client = TestClient(app)
+
+    first = client.post(f"/agent/drafts/{draft.id}/cancel", json={"cancelled_by": "alpha@shop.com"})
+    second = client.post(f"/agent/drafts/{draft.id}/approve", json={})
+
+    assert first.status_code == 200 and first.json()["status"] == "cancelled"
+    assert second.status_code == 409

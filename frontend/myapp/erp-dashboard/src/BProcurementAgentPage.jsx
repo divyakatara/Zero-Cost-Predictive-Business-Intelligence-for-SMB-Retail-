@@ -241,6 +241,22 @@ export default function ProcurementAgentPage({ business, focusProductId, onFocus
     }
   }
 
+  async function handleCancel() {
+    if (!draft) return;
+    setBusy(true);
+    setActionError("");
+    try {
+      const updated = await postJson(`/agent/drafts/${draft.id}/cancel`, { cancelled_by: identity });
+      setDraft(updated);
+      setConfirmation({ type: "cancelled", text: `Draft for ${updated.product_name} was withdrawn. No order was created and nothing was recorded as rejected.` });
+      await loadAll();
+    } catch (err) {
+      setActionError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const isLocked = business && business.status !== "approved";
 
   return (
@@ -440,6 +456,9 @@ export default function ProcurementAgentPage({ business, focusProductId, onFocus
                     <button style={btnDanger} disabled={busy || isLocked} onClick={handleReject}>
                       Reject
                     </button>
+                    <button style={btnGhost} disabled={busy || isLocked} onClick={handleCancel} title="Withdraw this draft without rejecting it">
+                      Cancel Draft
+                    </button>
                   </div>
                 </>
               )}
@@ -452,9 +471,9 @@ export default function ProcurementAgentPage({ business, focusProductId, onFocus
                     borderRadius: 8,
                     fontSize: 12.5,
                     lineHeight: 1.6,
-                    background: confirmation.type === "approved" ? C.greenSubtle : C.criticalBg,
-                    color: confirmation.type === "approved" ? C.green : C.critical,
-                    border: `1px solid ${confirmation.type === "approved" ? C.greenBorder : "#ecc"}`,
+                    background: confirmation.type === "approved" ? C.greenSubtle : confirmation.type === "cancelled" ? C.bg : C.criticalBg,
+                    color: confirmation.type === "approved" ? C.green : confirmation.type === "cancelled" ? C.textMuted : C.critical,
+                    border: `1px solid ${confirmation.type === "approved" ? C.greenBorder : confirmation.type === "cancelled" ? C.border : "#ecc"}`,
                   }}
                 >
                   {confirmation.text}
