@@ -179,30 +179,12 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export default function ERPDashboard({
-  activeNav: activeNavProp,
-  onNavChange,
-  settingsTab,
-  onSettingsTabChange,
-  verificationStatus,
-  onVerificationStatusChange,
-  verificationPromptOpen,
-  onCloseVerificationPrompt,
-  business,
-  onLogout,
-}) {
-  const [internalNav, setInternalNav] = useState("Dashboard");
-  const activeNav = activeNavProp || internalNav;
-  const isVerified = business ? business.status === "approved" : verificationStatus === "Verified";
+// App.jsx only renders this dashboard for approved businesses.
+export default function ERPDashboard({ business, onLogout }) {
+  const [activeNav, setActiveNav] = useState("Dashboard");
   const [overview, setOverview] = useState(createEmptyOverview);
   const [dashboardError, setDashboardError] = useState("");
   const [procurementFocusId, setProcurementFocusId] = useState(null);
-
-  useEffect(() => {
-    if (activeNav === "Settings" && !settingsTab) {
-      onSettingsTabChange?.("Verification");
-    }
-  }, [activeNav, settingsTab, onSettingsTabChange]);
 
   useEffect(() => {
     let ignore = false;
@@ -251,11 +233,7 @@ export default function ERPDashboard({
   }, [activeNav]);
 
   function handleNavClick(label) {
-    setInternalNav(label);
-    onNavChange?.(label);
-    if (label === "Settings") {
-      onSettingsTabChange?.("Verification");
-    }
+    setActiveNav(label);
   }
 
   const inventoryData = overview.inventoryRows || [];
@@ -265,7 +243,6 @@ export default function ERPDashboard({
 
   const sidebarBtn = (item) => {
     const active = activeNav === item.label;
-    const isLocked = item.label === "Supplier Marketplace" && business && business.status !== "approved";
 
     return (
       <button
@@ -295,20 +272,6 @@ export default function ERPDashboard({
         <span style={{ fontSize: 14 }}>{item.icon}</span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
           <span>{item.label}</span>
-          {isLocked && (
-            <span title="Restricted until Admin Approval" style={{ fontSize: 11, background: "rgba(238, 222, 162, 0.2)", color: "#ecdca2", padding: "1px 6px", borderRadius: 4 }}>
-              🔒 Locked
-            </span>
-          )}
-          {item.label === "Settings" && !isVerified && (
-            <span
-              aria-label="Not verified"
-              title="Not verified"
-              style={{ fontSize: 12 }}
-            >
-              !
-            </span>
-          )}
         </span>
       </button>
     );
@@ -449,94 +412,6 @@ export default function ERPDashboard({
         </div>
       </aside>
       <main style={{ flex: 1, padding: "36px 40px", overflowY: "auto" }}>
-        {/* Status Notice Banner for Pending or Rejected Business Users */}
-        {business && business.status === "pending" && (
-          <div
-            style={{
-              background: "#fbf3e3",
-              border: "1px solid #ecdca2",
-              borderRadius: 12,
-              padding: "16px 22px",
-              marginBottom: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(166,122,46,0.08)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ fontSize: 24 }}>⏳</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: "#8a601e", fontFamily: "Syne, sans-serif" }}>
-                  Registration Under Admin Review
-                </div>
-                <div style={{ fontSize: 12, color: "#6a5018", marginTop: 2, lineHeight: 1.5 }}>
-                  Your business <strong>"{business.businessName || "Profile"}"</strong> is pending manual verification. Standard features are available, but procurement, placing orders, and Supplier Marketplace are restricted until approved.
-                </div>
-              </div>
-            </div>
-            <span
-              style={{
-                background: "#a67a2e",
-                color: "#fff",
-                padding: "6px 14px",
-                borderRadius: 20,
-                fontSize: 11,
-                fontWeight: 700,
-                letterSpacing: "0.5px",
-                flexShrink: 0,
-              }}
-            >
-              Pending Approval
-            </span>
-          </div>
-        )}
-
-        {business && business.status === "rejected" && (
-          <div
-            style={{
-              background: "#fdf0f0",
-              border: "1px solid #f0c8c0",
-              borderRadius: 12,
-              padding: "16px 22px",
-              marginBottom: 28,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              boxShadow: "0 2px 8px rgba(184,84,63,0.08)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-              <span style={{ fontSize: 24, color: C.danger }}>✕</span>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 14, color: C.danger, fontFamily: "Syne, sans-serif" }}>
-                  Registration Not Approved
-                </div>
-                <div style={{ fontSize: 12, color: "#8a3a2e", marginTop: 2, lineHeight: 1.5 }}>
-                  Reason: {business.rejectionReason || "Details could not be verified."}. Please update your profile in Settings to resubmit.
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => handleNavClick("Settings")}
-              style={{
-                background: C.danger,
-                color: "#fff",
-                border: "none",
-                padding: "8px 16px",
-                borderRadius: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                flexShrink: 0,
-              }}
-            >
-              Update Profile
-            </button>
-          </div>
-        )}
-
         {activeNav === "Dashboard" && (
           <div
             style={{
@@ -651,7 +526,6 @@ export default function ERPDashboard({
                         try {
                           const res = await apiFetch(`/api/data/load-demo`, { method: "POST" });
                           if (res.ok) {
-                            const data = await res.json();
                             const response2 = await apiFetch(`/dashboard/overview`);
                             if (response2.ok) {
                               const newData = await response2.json();
@@ -875,6 +749,7 @@ export default function ERPDashboard({
                     </div>
                   </div>
                   <button
+                    onClick={() => handleNavClick("Analytics")}
                     style={{
                       padding: "7px 16px",
                       background: C.greenSubtle,
@@ -1009,6 +884,7 @@ export default function ERPDashboard({
                     </div>
                   </div>
                   <button
+                    onClick={() => handleNavClick("Sales")}
                     style={{
                       padding: "7px 16px",
                       background: C.greenSubtle,
@@ -1436,115 +1312,12 @@ export default function ERPDashboard({
             onFocusHandled={() => setProcurementFocusId(null)}
           />
         )}
-        {activeNav === "Supplier Marketplace" && (
-          business && business.status !== "approved" ? (
-            <div style={{ background: C.card, borderRadius: 16, border: `1px solid ${C.border}`, padding: "60px 40px", textAlign: "center", maxWidth: 560, margin: "40px auto", boxShadow: "0 4px 20px rgba(0,0,0,0.04)" }}>
-              <div style={{ width: 64, height: 64, borderRadius: "50%", background: C.warnBg, color: C.warn, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, margin: "0 auto 20px", border: "1px solid #ecdca2" }}>🔒</div>
-              <h2 style={{ ...syne, fontSize: 22, fontWeight: 800, color: C.text, marginBottom: 10 }}>Supplier Marketplace Restricted</h2>
-              <p style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 24 }}>
-                Procurement, placing orders, and supplier marketplace features require an approved business account. Your business profile is currently <strong>{business.status === "rejected" ? "rejected" : "under review by Admin"}</strong>.
-              </p>
-              <div style={{ background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: 16, fontSize: 12, color: C.green, textAlign: "left", marginBottom: 24 }}>
-                <strong>Automatic Unlock:</strong> Once System Admin reviews and approves your business details, this feature will automatically unlock without requiring a new account.
-              </div>
-              <button onClick={() => handleNavClick("Settings")} style={{ background: C.green, color: "#fff", border: "none", padding: "12px 24px", borderRadius: 10, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Check Account Verification →</button>
-            </div>
-          ) : (
-            <SupplierMarketplacePage business={business} />
-          )
-        )}
+        {activeNav === "Supplier Marketplace" && <SupplierMarketplacePage business={business} />}
         {activeNav === "Analytics" && <BAnalyticsPage />}
         {activeNav === "AI Insights" && <BAIInsightsPage />}
         {activeNav === "Alerts" && <BAlertsPage />}
-        {activeNav === "Settings" && (
-          <BSettingsPage
-            activeTab={settingsTab || "Business Profile"}
-            onTabChange={onSettingsTabChange}
-            verificationStatus={verificationStatus}
-            onVerificationStatusChange={onVerificationStatusChange}
-          />
-        )}
+        {activeNav === "Settings" && <BSettingsPage business={business} onLogout={onLogout} />}
       </main>
-
-      {verificationPromptOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(42,42,42,0.55)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-            padding: 24,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 420,
-              background: C.card,
-              borderRadius: 14,
-              border: `1px solid ${C.border}`,
-              padding: 24,
-              boxShadow: "0 18px 50px rgba(0,0,0,0.18)",
-            }}
-          >
-            <div
-              style={{
-                ...syne,
-                fontSize: 18,
-                fontWeight: 800,
-                color: C.text,
-                marginBottom: 10,
-              }}
-            >
-              Verify your profile using GSTIN
-            </div>
-            <div style={{ fontSize: 13, color: C.textDim, marginBottom: 22 }}>
-              Add your GST details to continue with verification.
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                onClick={onCloseVerificationPrompt}
-                style={{
-                  padding: "10px 16px",
-                  background: "#fff",
-                  color: C.text,
-                  border: `1px solid ${C.border}`,
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}
-              >
-                Later
-              </button>
-              <button
-                onClick={() => {
-                  handleNavClick("Settings");
-                  onSettingsTabChange?.("Verification");
-                  onCloseVerificationPrompt?.();
-                }}
-                style={{
-                  padding: "10px 16px",
-                  background: C.green,
-                  color: "#fff",
-                  border: "none",
-                  borderRadius: 8,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  fontFamily: "'IBM Plex Sans', sans-serif",
-                }}
-              >
-                Verify Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Gemini Chatbot for Business Users */}
       <ChatWidget />
