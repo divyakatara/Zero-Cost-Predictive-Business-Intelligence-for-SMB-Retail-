@@ -2,14 +2,14 @@ import re
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
 import schemas
 from database import get_db
-from routes.auth import require_admin
+from routes.auth import get_current_user, require_admin
 
 
 router = APIRouter(prefix="/business", tags=["Business"])
@@ -45,6 +45,7 @@ def serialize_business(business: models.Business):
         "gstin": business.gstin,
         "pan": business.pan,
         "gstCertificateName": business.gst_certificate_name,
+        "hasGstCertificateFile": business.gst_certificate_type is not None,
 
         "status": business.status,
         "submittedAt": business.submitted_at,
@@ -160,6 +161,9 @@ def register_business(
         existing.gstin = data.gstin
         existing.pan = data.pan
         existing.gst_certificate_name = data.gstCertificateName
+        if not data.gstCertificateName:
+            existing.gst_certificate_type = None
+            existing.gst_certificate_data = None
 
         existing.status = "pending"
         existing.submitted_at = datetime.utcnow()
@@ -316,3 +320,70 @@ def revoke_business(
     if business.status != "approved":
         raise HTTPException(status_code=409, detail=f"Cannot revoke a business that is {business.status}.")
     return _set_review(db, business, "pending", "Approval revoked by Admin.")
+
+
+
+# ── GST certificate file ─────────────────────────────────────────────────────
+
+GST_CERTIFICATE_TYPES = {
+    ".pdf": "application/pdf",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+}
+GST_CERTIFICATE_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _is_owner(business: models.Business, current_user: dict) -> bool:
+    return bool(business.owner) and business.owner.email.lower() == str(current_user.get("sub", "")).lower()
+
+
+@router.post("/{business_id}/gst-certificate")
+async def upload_gst_certificate(
+    business_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    business = _get_business_or_404(db, business_id)
+    if not _is_owner(business, current_user):
+        raise HTTPException(status_code=403, detail="Only the business owner can upload its GST certificate.")
+
+    filename = file.filename or ""
+    extension = filename[filename.rfind("."):].lower() if "." in filename else ""
+    content_type = GST_CERTIFICATE_TYPES.get(extension)
+    if content_type is None:
+        raise HTTPException(status_code=400, detail="GST certificate must be a PDF, JPG, or PNG file.")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+    if len(contents) > GST_CERTIFICATE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="GST certificate must be 5 MB or smaller.")
+
+    business.gst_certificate_name = filename
+    business.gst_certificate_type = content_type
+    business.gst_certificate_data = contents
+    db.commit()
+    db.refresh(business)
+    return serialize_business(business)
+
+
+@router.get("/{business_id}/gst-certificate")
+def download_gst_certificate(
+    business_id: int,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    business = _get_business_or_404(db, business_id)
+    if current_user.get("role") != "admin" and not _is_owner(business, current_user):
+        raise HTTPException(status_code=403, detail="Not allowed to view this GST certificate.")
+    if business.gst_certificate_type is None:
+        raise HTTPException(status_code=404, detail="No GST certificate file has been uploaded.")
+
+    safe_name = (business.gst_certificate_name or "gst-certificate").replace('"', "")
+    return Response(
+        content=business.gst_certificate_data,
+        media_type=business.gst_certificate_type,
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )

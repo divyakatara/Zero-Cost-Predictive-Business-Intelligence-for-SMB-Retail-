@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { listBusinessesForAdmin, approveBusiness, rejectBusiness, revokeBusiness } from "./businessStore";
 import ChatWidget from "./ChatWidget";
-import { apiFetch, getAuthToken } from "./api";
+import { apiFetch, getAuthToken, openGstCertificateApi } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -107,20 +107,16 @@ export default function AdminApprovalPage({ onLogout }) {
     }
   };
 
-  const openDocument = (docData, docName) => {
-    if (!docData) {
-      setActionError(`GST certificate "${docName || "file"}" was recorded by name only; the file itself is not stored on the server.`);
+  const openDocument = async (business) => {
+    setActionError("");
+    if (!business.hasGstCertificateFile) {
+      setActionError(`Only the file name "${business.gstCertificateName}" was recorded for ${business.businessName}; no file was uploaded.`);
       return;
     }
-    const win = window.open();
-    if (win) {
-      if (docData.startsWith("data:application/pdf")) {
-        win.document.write(`<iframe src="${docData}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-      } else if (docData.startsWith("data:image")) {
-        win.document.write(`<img src="${docData}" style="max-width:100%; height:auto; margin:20px auto; display:block;" />`);
-      } else {
-        win.location.href = docData;
-      }
+    try {
+      await openGstCertificateApi(business.id);
+    } catch (err) {
+      setActionError(err.message || "Could not open the GST certificate.");
     }
   };
 
@@ -326,14 +322,14 @@ export default function AdminApprovalPage({ onLogout }) {
                     <span style={{ color: C.textDim, display: "block", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>GST Certificate</span>
                     {b.gstCertificateName ? (
                       <button
-                        onClick={() => openDocument(b.gstCertificateData, b.gstCertificateName)}
+                        onClick={() => openDocument(b)}
                         style={{
                           background: C.greenSubtle, color: C.green, border: `1px solid ${C.greenBorder}`,
                           borderRadius: 6, padding: "3px 8px", fontSize: 11, fontWeight: 600,
                           cursor: "pointer", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4,
                         }}
                       >
-                        📄 View/Download PDF
+                        📄 View Certificate
                       </button>
                     ) : (
                       <span style={{ color: C.textDim, fontSize: 11 }}>Not uploaded</span>

@@ -204,6 +204,7 @@ class BusinessResponse(BaseModel):
     gstin: Optional[str] = None
     pan: Optional[str] = None
     gstCertificateName: Optional[str] = None
+    hasGstCertificateFile: bool = False
 
     status: str
     submittedAt: datetime
