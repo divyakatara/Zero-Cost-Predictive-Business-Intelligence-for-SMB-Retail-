@@ -26,7 +26,7 @@ def catalog(db, suppliers):
         ("item_c", date(2024, 12, 2), "store_1", 9, 9000.0),  # other supplier's product
     ]
     db.add_all([
-        models.Sale(product_code=code, sale_date=d, date=d, branch_id=branch, quantity=units, quantity_sold=units, revenue=revenue)
+        models.Sale(product_code=code, sale_date=d, branch_id=branch, quantity_sold=units, revenue=revenue)
         for code, d, branch, units, revenue in sales
     ])
     db.commit()

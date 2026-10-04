@@ -19,7 +19,7 @@ def file_db(tmp_path, monkeypatch):
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine)
     setup = Session()
-    setup.add(models.Supplier(name="Supplier 1", supplier_code="supplier_1", supplier_name="Supplier 1", rank=1, rating=4.5, lead_time=3))
+    setup.add(models.Supplier(name="Supplier 1", supplier_code="supplier_1", rank=1, rating=4.5, lead_time=3))
     setup.add(models.Product(name="Rice", product_code="item_1", supplier_code="supplier_1", supplier_stock=10, reorder_level=100))
     setup.commit()
     product_id = setup.query(models.Product).one().id

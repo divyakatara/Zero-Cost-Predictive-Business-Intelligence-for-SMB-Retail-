@@ -114,7 +114,7 @@ def get_supplier_anomalies(
 
     return {
         "supplier_code": supplier.supplier_code,
-        "supplier_name": supplier.supplier_name or supplier.name,
+        "supplier_name": supplier.name,
         "product_codes": product_codes,
         "total_anomalies": len(anomalies),
         "high_risk": high_risk,

@@ -1,6 +1,6 @@
 from typing import List
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 import models
@@ -12,11 +12,26 @@ router = APIRouter(prefix="/sales", tags=["Sales"])
 
 @router.post("/", response_model=schemas.SaleResponse)
 def add_sale(sale: schemas.SaleCreate, db: Session = Depends(get_db)):
-    """Add a new sales record."""
+    """Add a sales record, filling the same columns the data import and the
+    workbook loader fill, so API-created and imported rows look alike."""
+    product = db.query(models.Product).filter(models.Product.id == sale.product_id).first()
+    if product is None:
+        raise HTTPException(status_code=404, detail="Product not found.")
+    price = sale.price if sale.price is not None else product.price
+    cost = product.cost_price
+    revenue = price * sale.quantity_sold if price is not None else None
+    total_cost = cost * sale.quantity_sold if cost is not None else None
     new_sale = models.Sale(
-        product_id=sale.product_id,
-        quantity=sale.quantity,
-        date=sale.date,
+        **sale.model_dump(exclude={"price"}),
+        product_code=product.product_code,
+        price=price,
+        revenue=revenue,
+        cost_price=cost,
+        total_cost=total_cost,
+        profit=revenue - total_cost if revenue is not None and total_cost is not None else None,
+        weekday=sale.sale_date.weekday(),
+        month=sale.sale_date.month,
+        is_weekend=sale.sale_date.weekday() >= 5,
     )
     db.add(new_sale)
     db.commit()

@@ -24,7 +24,7 @@ router = APIRouter(prefix="/suppliers", tags=["Suppliers"])
 def supplier_to_dataset_row(supplier: models.Supplier) -> dict:
     return {
         "supplier_id": supplier.supplier_code,
-        "supplier_name": supplier.supplier_name or supplier.name,
+        "supplier_name": supplier.name,
         "location": supplier.location,
         "rating": supplier.rating,
         "lead_time_days": supplier.lead_time,
@@ -400,7 +400,7 @@ def supplier_insights(supplier_code: str, db: Session = Depends(get_db)):
     ranked_count = sum(1 for s in peers if s.rank is not None)
 
     return {
-        "headerNote": f"Insights for {supplier.supplier_name or supplier.name} ({supplier.supplier_code}) - Live database data",
+        "headerNote": f"Insights for {supplier.name} ({supplier.supplier_code}) - Live database data",
         "kpis": [
             {"label": "Action Items", "value": str(len(restock_needed) + len(delivery_flags)), "sub": "Restocks and delivery risks"},
             {"label": "Order Opportunities", "value": str(len(restock_needed)), "sub": "Your products near reorder level"},

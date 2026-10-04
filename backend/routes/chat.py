@@ -111,7 +111,7 @@ def _get_erp_context(db: Session) -> tuple[str, bool]:
     lines.append(f"Total Suppliers: {len(suppliers)}")
     for s in suppliers[:5]:
         lines.append(
-            f"  - {s.supplier_name or s.name}: Rating {float(s.rating or 0):.1f}/5, Lead Time {s.lead_time or 0} days"
+            f"  - {s.name}: Rating {float(s.rating or 0):.1f}/5, Lead Time {s.lead_time or 0} days"
         )
 
     return ("\n".join(lines), True)

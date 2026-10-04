@@ -37,7 +37,7 @@ def db():
 def suppliers(db):
     """Three ranked suppliers: supplier_1 is the best-ranked."""
     rows = [
-        models.Supplier(name=f"Supplier {i}", supplier_code=f"supplier_{i}", supplier_name=f"Supplier {i}", rank=i, rating=5 - i)
+        models.Supplier(name=f"Supplier {i}", supplier_code=f"supplier_{i}", rank=i, rating=5 - i)
         for i in (1, 2, 3)
     ]
     db.add_all(rows)

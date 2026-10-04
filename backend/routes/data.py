@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/data", tags=["Data Connection"])
 def supplier_to_dataset_row(supplier: models.Supplier) -> dict:
     return {
         "supplier_id": supplier.supplier_code,
-        "supplier_name": supplier.supplier_name or supplier.name,
+        "supplier_name": supplier.name,
         "location": supplier.location,
         "rating": supplier.rating,
         "lead_time_days": supplier.lead_time,
@@ -206,10 +206,14 @@ async def import_user_dataset(
                 models.Sale(
                     business_id=business_id,  # bulk save skips the tenancy flush hook
                     product_id=prod_map.get(p_code),
-                    quantity=qty,
                     quantity_sold=qty,
-                    date=s_date,
                     sale_date=s_date,
+                    # Calendar features the Decision Tree trains on, as the
+                    # workbook loader and POST /sales fill them.
+                    weekday=s_date.weekday(),
+                    month=s_date.month,
+                    is_weekend=s_date.weekday() >= 5,
+                    promo=bool(r.get("promo")) if pd.notna(r.get("promo")) else False,
                     branch_id=str(r.get("branch_id", "store_1")).strip() if pd.notna(r.get("branch_id")) else "store_1",
                     product_code=p_code,
                     price=float(r.get("price", 0.0)) if pd.notna(r.get("price")) else 0.0,

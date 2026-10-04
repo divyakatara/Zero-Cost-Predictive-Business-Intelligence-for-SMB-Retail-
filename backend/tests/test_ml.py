@@ -47,8 +47,8 @@ def test_decision_tree_on_seeded_product(db, transactions, tmp_path, monkeypatch
     db.flush()
     db.add_all([
         models.Sale(
-            product_id=product.id, product_code="item_1", quantity=int(r.quantity_sold), quantity_sold=int(r.quantity_sold),
-            date=r.sale_date.date(), sale_date=r.sale_date.date(), weekday=int(r.weekday), month=int(r.month),
+            product_id=product.id, product_code="item_1", quantity_sold=int(r.quantity_sold),
+            sale_date=r.sale_date.date(), weekday=int(r.weekday), month=int(r.month),
             is_weekend=bool(r.is_weekend), promo=bool(r.promo),
         )
         for r in rows.itertuples()

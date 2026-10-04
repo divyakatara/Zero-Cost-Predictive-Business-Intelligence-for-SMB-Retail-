@@ -19,8 +19,8 @@ def product(db):
     for i in range(30):
         day = start + timedelta(days=i)
         db.add(models.Sale(
-            product_id=product.id, product_code="item_1", quantity=40 + i % 5, quantity_sold=40 + i % 5,
-            date=day, sale_date=day, weekday=day.weekday(), month=day.month,
+            product_id=product.id, product_code="item_1", quantity_sold=40 + i % 5,
+            sale_date=day, weekday=day.weekday(), month=day.month,
             is_weekend=day.weekday() >= 5, promo=False,
         ))
     db.commit()

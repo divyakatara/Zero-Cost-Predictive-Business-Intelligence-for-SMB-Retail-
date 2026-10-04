@@ -48,7 +48,7 @@ def _order_to_dict(order: "models.PurchaseOrder") -> dict:
     supplier = order.supplier
     product_code = order.product_code or (product.product_code if product else None)
     product_name = order.product_name or ((product.product_code or product.name) if product else None)
-    supplier_name = order.supplier_name or ((supplier.supplier_name or supplier.name) if supplier else None)
+    supplier_name = order.supplier_name or ((supplier.name) if supplier else None)
     return {
         "id": order.id,
         "status": order.status,

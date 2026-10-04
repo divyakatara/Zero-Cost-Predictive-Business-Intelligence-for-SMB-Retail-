@@ -4,7 +4,7 @@ from routes.business_pages import suppliers_overview
 
 
 def _order(db, supplier, requested_by, status="created"):
-    db.add(models.PurchaseOrder(supplier_id=supplier.id, supplier_name=supplier.supplier_name, status=status, requested_by=requested_by))
+    db.add(models.PurchaseOrder(supplier_id=supplier.id, supplier_name=supplier.name, status=status, requested_by=requested_by))
     db.commit()
 
 

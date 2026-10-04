@@ -65,28 +65,25 @@ class ProductResponse(ProductCreate):
 
 # Sales schemas
 class SaleCreate(BaseModel):
+    """What a caller supplies; revenue, cost, profit and calendar fields are derived."""
     product_id: int
-    quantity: int
-    date: date
-    sale_date: Optional[date] = None
+    quantity_sold: int
+    sale_date: date
     branch_id: Optional[str] = None
-    product_code: Optional[str] = None
-    quantity_sold: Optional[int] = None
     price: Optional[float] = None
     promo: Optional[bool] = None
-    weekday: Optional[int] = None
-    month: Optional[int] = None
-    revenue: Optional[float] = None
-    cost_price: Optional[float] = None
-    total_cost: Optional[float] = None
-    profit: Optional[float] = None
-    lag_1: Optional[int] = None
-    lag_7: Optional[int] = None
-    is_weekend: Optional[bool] = None
 
 
 class SaleResponse(SaleCreate):
     id: int
+    product_code: Optional[str] = None
+    revenue: Optional[float] = None
+    cost_price: Optional[float] = None
+    total_cost: Optional[float] = None
+    profit: Optional[float] = None
+    weekday: Optional[int] = None
+    month: Optional[int] = None
+    is_weekend: Optional[bool] = None
 
     class Config:
         from_attributes = True

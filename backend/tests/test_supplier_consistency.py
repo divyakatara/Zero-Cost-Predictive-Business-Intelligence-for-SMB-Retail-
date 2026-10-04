@@ -5,7 +5,7 @@ from services.supplier_selection import ranked_suppliers, recommend_suppliers
 
 
 def _supplier(db, code, rank, weighted_score):
-    supplier = models.Supplier(name=code, supplier_name=code, supplier_code=code, rank=rank, weighted_score=weighted_score)
+    supplier = models.Supplier(name=code, supplier_code=code, rank=rank, weighted_score=weighted_score)
     db.add(supplier)
     db.commit()
     return supplier

@@ -62,7 +62,7 @@ def _avg_daily_sales(db: Session, product: "models.Product") -> tuple[Optional[f
         .filter(models.Sale.sale_date.isnot(None))
         .filter(models.Sale.sale_date >= window_start)
         .with_entities(
-            func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0).label("qty"),
+            func.coalesce(models.Sale.quantity_sold, 0).label("qty"),
         )
         .all()
     )
