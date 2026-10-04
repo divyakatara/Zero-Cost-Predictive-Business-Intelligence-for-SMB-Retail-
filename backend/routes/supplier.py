@@ -169,17 +169,18 @@ def supplier_analytics(
     db: Session = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """Demand for this supplier's products in the chosen period: orders,
-    revenue, per-product units, weekday pattern, revenue trend and the retail
-    branches buying them."""
+    """Demand for this supplier's products in the chosen period, across every
+    retailer on the platform: orders, revenue, per-product units, weekday
+    pattern, revenue trend and the retailer branches buying them."""
     supplier = get_own_supplier(db, supplier_code, current_user)
     period = period if period in ANALYTICS_PERIODS else "all"
     start, end, period_label = analytics_window(db, period)
     product_codes = _product_codes(db, supplier_code)
 
+    retailer_names = dict(db.query(models.Business.id, models.Business.name).all())
     query = db.query(
         models.Sale.product_code, models.Sale.sale_date, models.Sale.branch_id,
-        models.Sale.quantity_sold, models.Sale.revenue,
+        models.Sale.quantity_sold, models.Sale.revenue, models.Sale.business_id,
     ).filter(models.Sale.product_code.in_(product_codes))
     if start is not None:
         query = query.filter(models.Sale.sale_date >= start, models.Sale.sale_date <= end)
@@ -189,13 +190,13 @@ def supplier_analytics(
     orders_by_weekday = Counter()
     revenue_by_bucket = defaultdict(float)
     branches = defaultdict(lambda: {"orders": 0, "spend": 0.0, "last": None})
-    for code, sale_date, branch, units, revenue in sales:
+    for code, sale_date, branch, units, revenue, business_id in sales:
         units_by_product[code] += units or 0
         if sale_date is not None:
             orders_by_weekday[WEEKDAYS[sale_date.weekday()]] += 1
             bucket = sale_date.strftime("%b") if period == "all" else sale_date.strftime("%d %b")
             revenue_by_bucket[(sale_date.replace(day=1) if period == "all" else sale_date, bucket)] += revenue or 0.0
-        info = branches[branch or "Unknown branch"]
+        info = branches[f"{retailer_names.get(business_id, 'Unknown retailer')} · {branch or 'unknown branch'}"]
         info["orders"] += 1
         info["spend"] += revenue or 0.0
         if sale_date is not None and (info["last"] is None or sale_date > info["last"]):
@@ -262,6 +263,7 @@ def supplier_marketplace(supplier_code: str, db: Session = Depends(get_db), curr
     businesses = (
         db.query(models.Business)
         .filter(models.Business.status == "approved")
+        .filter(models.Business.is_demo.is_(False))
         .order_by(models.Business.name.asc())
         .all()
     )

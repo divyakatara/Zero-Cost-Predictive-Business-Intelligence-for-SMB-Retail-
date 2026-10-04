@@ -75,6 +75,9 @@ def _dummy_supplier_gstin(supplier: models.Supplier, index: int) -> str:
 
 
 def load_excel_tables(db: Session) -> None:
+    # The business that owns the workbook rows (the demo business at startup).
+    # Bulk inserts skip the tenancy flush hook, so it is set explicitly.
+    owner_id = db.info.get("business_id")
     if not EXCEL_PATH.exists():
         print(f"Excel workbook not found at {EXCEL_PATH}, skipping Excel sync.", flush=True)
         return
@@ -176,6 +179,7 @@ def load_excel_tables(db: Session) -> None:
         risk_score = max(1, min(5, int((100 - rel_score) / 4)))
         supplier_mappings.append(
             {
+                "business_id": owner_id,
                 "supplier_code": code,
                 "supplier_name": s_name,
                 "name": s_name or code or "Supplier",
@@ -205,6 +209,7 @@ def load_excel_tables(db: Session) -> None:
         p_name = _clean_str(r.get("product_name"))
         product_mappings.append(
             {
+                "business_id": owner_id,
                 "product_code": p_code,
                 "name": p_name or p_code or "Product",
                 "category": _clean_str(r.get("category")),
@@ -268,6 +273,7 @@ def load_excel_tables(db: Session) -> None:
 
         sales_mappings.append(
             {
+                "business_id": owner_id,
                 "product_id": prod_id_map.get(p_code),
                 "quantity": qty,
                 "date": s_date or datetime.utcnow().date(),
@@ -308,6 +314,7 @@ def load_excel_tables(db: Session) -> None:
             if p_id:
                 inv_rows.append(
                     models.Inventory(
+                        business_id=owner_id,
                         product_id=p_id,
                         stock=_as_int(r.get("stock")),
                         reorder_level=_as_int(r.get("reorder_level")),

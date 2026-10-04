@@ -105,6 +105,7 @@ function DataTab() {
   const [dataStatus, setDataStatus] = useState(null);
   const [dataMsg, setDataMsg] = useState({ text: "", type: "" });
   const [dataLoading, setDataLoading] = useState("");
+  const [history, setHistory] = useState([]);
 
   useEffect(() => {
     fetchDataStatus();
@@ -112,8 +113,9 @@ function DataTab() {
 
   async function fetchDataStatus() {
     try {
-      const res = await apiFetch(`/api/data/status`);
-      if (res.ok) setDataStatus(await res.json());
+      const [statusRes, historyRes] = await Promise.all([apiFetch(`/api/data/status`), apiFetch(`/api/data/history`)]);
+      if (statusRes.ok) setDataStatus(await statusRes.json());
+      if (historyRes.ok) setHistory(await historyRes.json());
     } catch { /* backend may be offline */ }
   }
 
@@ -304,7 +306,7 @@ function DataTab() {
               <div style={{ background: "#fdf8f8", borderRadius: 12, padding: "20px 24px", border: "1px solid #f0d8d8" }}>
                 <div style={{ ...syne, fontSize: 14, fontWeight: 700, color: "#8a3030", marginBottom: 6 }}>Clear Business Data</div>
                 <div style={{ fontSize: 12, color: C.textDim, marginBottom: 14, lineHeight: 1.5 }}>
-                  Remove all sales, inventory, and supplier records to test the empty dashboard state.
+                  Remove your business's sales, products and inventory to see the empty dashboard state. Other businesses and the supplier marketplace are not affected.
                 </div>
                 <button
                   style={{ padding: "9px 16px", background: "transparent", color: "#b83030", border: "1px solid #f0c8c0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", opacity: dataLoading === "clear" ? 0.7 : 1 }}
@@ -315,6 +317,35 @@ function DataTab() {
                 </button>
               </div>
             </div>
+          </div>
+
+          {/* Import history (this business only) */}
+          <div style={{ background: C.card, borderRadius: 12, padding: "20px 24px", border: `1px solid ${C.border}` }}>
+            <div style={{ ...syne, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Import History</div>
+            {history.length === 0 ? (
+              <div style={{ fontSize: 12, color: C.textDim }}>No files imported yet. Your data is the demo dataset or empty.</div>
+            ) : (
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                <thead>
+                  <tr>
+                    {["File", "Sales rows", "Products", "Imported by", "When"].map((h) => (
+                      <th key={h} style={{ textAlign: "left", padding: "6px 4px", color: C.textDim, fontWeight: 600, borderBottom: `1px solid ${C.border}` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((h) => (
+                    <tr key={h.id}>
+                      <td style={{ padding: "8px 4px", color: C.text }}>{h.filename}</td>
+                      <td style={{ padding: "8px 4px", color: C.textMuted }}>{h.row_count.toLocaleString("en-IN")}</td>
+                      <td style={{ padding: "8px 4px", color: C.textMuted }}>{h.products_count ?? "-"}</td>
+                      <td style={{ padding: "8px 4px", color: C.textMuted }}>{h.imported_by || "-"}</td>
+                      <td style={{ padding: "8px 4px", color: C.textMuted }}>{h.imported_at ? new Date(`${h.imported_at}Z`).toLocaleString("en-IN") : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* Column reference */}

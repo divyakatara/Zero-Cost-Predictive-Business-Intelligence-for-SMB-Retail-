@@ -114,8 +114,10 @@ def _sales_signature(db: Session, product: "models.Product") -> list:
     return [int(count), latest.isoformat() if latest else None, int(units)]
 
 
-def _cache_path(product_code: str) -> Path:
-    return DEMAND_CACHE_DIR / f"decision_tree_{re.sub(r'[^A-Za-z0-9_-]', '_', product_code)}.joblib"
+def _cache_path(product: "models.Product") -> Path:
+    # Per business as well as per product: two businesses can both have item_1.
+    code = re.sub(r"[^A-Za-z0-9_-]", "_", product.product_code)
+    return DEMAND_CACHE_DIR / f"decision_tree_b{product.business_id or 0}_{code}.joblib"
 
 
 def get_demand_model(db: Session, product: "models.Product", refresh: bool = False) -> tuple[dict, bool]:
@@ -123,7 +125,7 @@ def get_demand_model(db: Session, product: "models.Product", refresh: bool = Fal
     a Decision Tree only when there is no cache, the sales data changed, or a
     refresh is requested."""
     signature = _sales_signature(db, product)
-    path = _cache_path(product.product_code)
+    path = _cache_path(product)
     if not refresh and path.exists():
         try:
             bundle = joblib.load(path)

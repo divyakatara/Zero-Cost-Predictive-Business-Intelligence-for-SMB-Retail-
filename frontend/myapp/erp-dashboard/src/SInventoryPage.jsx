@@ -24,8 +24,8 @@ const statusMap = {
   critical: { bg: "#fdf0f0", color: "#8a2020", dot: "#c83030", label: "Critical" },
 };
 
-// Retailer stock of the products this supplier provides. A low or critical
-// row is a likely incoming order for the supplier.
+// Retailer stock of the products this supplier provides, one row per
+// retailer that stocks them. A low or critical row is a likely incoming order.
 export default function SupplierInventoryPage({ user }) {
   const supplierId = user?.supplier_id;
   const [activeFilter, setActiveFilter] = useState("All");
@@ -45,7 +45,7 @@ export default function SupplierInventoryPage({ user }) {
   const items = data.items;
   const filtered = items.filter((i) => {
     const q = search.toLowerCase();
-    const matchSearch = i.name.toLowerCase().includes(q) || (i.category || "").toLowerCase().includes(q);
+    const matchSearch = [i.name, i.category, i.retailer].some((v) => (v || "").toLowerCase().includes(q));
     const matchFilter = activeFilter === "All" || i.status === activeFilter.toLowerCase();
     return matchSearch && matchFilter;
   });
@@ -82,7 +82,7 @@ export default function SupplierInventoryPage({ user }) {
       {/* Summary Strip */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
         {[
-          { label: "Products Supplied", value: counts.total,    sub: "Linked to your supplier ID", accent: true },
+          { label: "Retailer Listings", value: counts.total,    sub: "Your products across retailers", accent: true },
           { label: "In Stock",          value: counts.ok,       sub: "Above reorder threshold" },
           { label: "Low Stock",         value: counts.low,      sub: "Within 25% of reorder level" },
           { label: "Critical",          value: counts.critical, sub: "At or below reorder level" },
@@ -117,7 +117,7 @@ export default function SupplierInventoryPage({ user }) {
             </div>
           </div>
           <input
-            placeholder="Search product or category…"
+            placeholder="Search product, retailer or category…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -130,7 +130,7 @@ export default function SupplierInventoryPage({ user }) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {["Product", "Category", "Retailer Stock", "Reorder Level", "Branch", "Status"].map((h) => (
+              {["Product", "Retailer", "Category", "Retailer Stock", "Reorder Level", "Status"].map((h) => (
                 <th key={h} style={{ textAlign: "left", padding: "10px 18px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>{h}</th>
               ))}
             </tr>
@@ -146,14 +146,14 @@ export default function SupplierInventoryPage({ user }) {
             {filtered.map((item) => {
               const s = statusMap[item.status] || statusMap.ok;
               return (
-                <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <tr key={item.product_id} style={{ borderBottom: `1px solid ${C.border}` }}>
                   <td style={{ padding: "13px 18px", fontWeight: 600, fontSize: 13, color: C.text, fontFamily: "monospace" }}>{item.name}</td>
+                  <td style={{ padding: "13px 18px", fontSize: 12, color: C.textMuted }}>{item.retailer}</td>
                   <td style={{ padding: "13px 18px" }}>
                     <span style={{ background: C.greenSubtle, color: C.textMuted, borderRadius: 4, padding: "2px 8px", fontSize: 11, border: `1px solid ${C.greenBorder}` }}>{item.category}</span>
                   </td>
                   <td style={{ padding: "13px 18px", fontFamily: "monospace", fontWeight: 600, fontSize: 13, color: C.text }}>{item.qty.toLocaleString("en-IN")} {item.unit}</td>
                   <td style={{ padding: "13px 18px", fontFamily: "monospace", fontSize: 13, color: C.textMuted }}>{item.reorder.toLocaleString("en-IN")}</td>
-                  <td style={{ padding: "13px 18px", fontSize: 12, color: C.textMuted }}>{item.updated}</td>
                   <td style={{ padding: "13px 18px" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 5, background: s.bg, color: s.color, padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 600, letterSpacing: "0.5px" }}>
                       <span style={{ width: 5, height: 5, borderRadius: "50%", background: s.dot, display: "inline-block" }} />
@@ -178,11 +178,11 @@ export default function SupplierInventoryPage({ user }) {
           const s = statusMap[item.status];
           const gap = item.reorder - item.qty;
           return (
-            <div key={item.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
+            <div key={item.product_id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 0", borderBottom: `1px solid ${C.border}` }}>
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: C.text, fontFamily: "monospace" }}>{item.name}</div>
                 <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>
-                  {item.qty} in stock · reorder level {item.reorder}
+                  {item.retailer} · {item.qty} in stock · reorder level {item.reorder}
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>

@@ -26,6 +26,9 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Business whose data introduced this supplier. Suppliers stay platform-wide
+    # (supplier accounts link to a global supplier_code), so reads are not scoped.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(String, nullable=False)
     location = Column(String, nullable=True)
     rating = Column(Float, nullable=True)
@@ -59,13 +62,15 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String, nullable=False)
     category = Column(String, nullable=True)
     price = Column(Float, nullable=True)
     cost_price = Column(Float, nullable=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
 
-    product_code = Column(String, unique=True, index=True, nullable=True)
+    product_code = Column(String, index=True, nullable=True)
     supplier_code = Column(String, nullable=True)
     supplier_name = Column(String, nullable=True)
     location = Column(String, nullable=True)
@@ -80,6 +85,11 @@ class Product(Base):
     supplier = relationship("Supplier", back_populates="products")
     sales = relationship("Sale", back_populates="product")
     inventory = relationship("Inventory", back_populates="product", uselist=False)
+    business = relationship("Business")
+
+    __table_args__ = (
+        Index("ux_products_business_product_code", "business_id", "product_code", unique=True),
+    )
 
 
 class Sale(Base):
@@ -88,6 +98,8 @@ class Sale(Base):
     __tablename__ = "retail_sales"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
     quantity = Column(Integer, nullable=False)
     date = Column(Date, nullable=False)
@@ -117,6 +129,8 @@ class Inventory(Base):
     __tablename__ = "inventory"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), unique=True, nullable=False)
     stock = Column(Integer, nullable=False)
     reorder_level = Column(Integer, nullable=False)
@@ -139,6 +153,8 @@ class PurchaseOrder(Base):
     __tablename__ = "purchase_orders"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -205,6 +221,8 @@ class AgentAction(Base):
     __tablename__ = "agent_actions"
 
     id = Column(Integer, primary_key=True, index=True)
+    # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     purchase_order_id = Column(Integer, ForeignKey("purchase_orders.id", ondelete="SET NULL"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -270,8 +288,13 @@ class Business(Base):
         String,
         nullable=False,
         default="pending",
+        server_default="pending",
         index=True,
     )
+
+    # The system-owned business that holds the canonical demo dataset. Not a
+    # real registration: hidden from the admin queue and the marketplace.
+    is_demo = Column(Boolean, nullable=False, default=False, server_default=text("false"))
 
     submitted_at = Column(
         DateTime,
@@ -283,3 +306,17 @@ class Business(Base):
     rejection_reason = Column(Text, nullable=True)
 
     owner = relationship("User")
+
+
+class ImportLog(Base):
+    """One row per successful dataset import, per business (TASK-16)."""
+
+    __tablename__ = "import_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
+    filename = Column(String, nullable=False)
+    row_count = Column(Integer, nullable=False)
+    products_count = Column(Integer, nullable=True)
+    imported_by = Column(String, nullable=True)
+    imported_at = Column(DateTime, nullable=False, default=datetime.utcnow)

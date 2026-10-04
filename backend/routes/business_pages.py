@@ -76,6 +76,7 @@ def build_inventory_overview(db: Session, supplier_code: Optional[str] = None):
                 "unit": "units",
                 "supplier": product.supplier_name or product.supplier_code or "-",
                 "updated": product.branch_id or "-",
+                "retailer": product.business.name if product.business else "-",
             }
         )
 

@@ -29,7 +29,7 @@ def _add_sale(db, product, day, units):
 
 def test_repeated_calls_reuse_the_cached_tree(db, product, tmp_path):
     first = inventory.predict_demand("item_1", db=db)
-    cache_file = tmp_path / "decision_tree_item_1.joblib"
+    cache_file = tmp_path / "decision_tree_b0_item_1.joblib"
     mtime = cache_file.stat().st_mtime_ns
 
     second = inventory.predict_demand("item_1", db=db)
