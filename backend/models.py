@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Index, Integer, LargeBinary, String, Text, text
 from sqlalchemy.orm import deferred, relationship
 
 from database import Base
@@ -181,6 +181,18 @@ class PurchaseOrder(Base):
     product = relationship("Product")
     supplier = relationship("Supplier")
     actions = relationship("AgentAction", back_populates="purchase_order", order_by="AgentAction.created_at")
+
+    # At most one draft per product may be awaiting approval, enforced by the
+    # database so two simultaneous requests can't both create one.
+    __table_args__ = (
+        Index(
+            "ux_purchase_orders_one_awaiting_per_product",
+            "product_id",
+            unique=True,
+            postgresql_where=text("status = 'awaiting_approval'"),
+            sqlite_where=text("status = 'awaiting_approval'"),
+        ),
+    )
 
 
 class AgentAction(Base):
