@@ -9,6 +9,9 @@ from sqlalchemy.pool import StaticPool
 # Make backend modules (models, routes, services) importable from tests.
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+# Ensure tests run against an in-memory SQLite database by default.
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+
 import models  # noqa: E402
 from database import Base  # noqa: E402
 

@@ -6,7 +6,21 @@ from csv_loader import load_csv_tables, verify_loaded_data
 import models
 from database import SessionLocal, engine
 
-from routes import agent, auth, anomaly, business_pages, chat, dashboard, data, inventory, sales, supplier
+from routes import (
+    admin,
+    agent,
+    auth,
+    anomaly,
+    business,
+    business_pages,
+    chat,
+    dashboard,
+    data,
+    inventory,
+    sales,
+    supplier,
+)
+
 # Create database tables when the app starts.
 models.Base.metadata.create_all(bind=engine)
 
@@ -226,6 +240,40 @@ def run_simple_migrations():
             )
         )
 
+        connection.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS businesses (
+                    id SERIAL PRIMARY KEY,
+                    owner_user_id INTEGER NOT NULL REFERENCES users(id),
+                    name VARCHAR NOT NULL,
+                    business_type VARCHAR NOT NULL,
+                    category VARCHAR NOT NULL,
+                    year_established INTEGER,
+                    employee_count INTEGER,
+                    description TEXT,
+                    address_line1 VARCHAR NOT NULL,
+                    address_line2 VARCHAR,
+                    city VARCHAR NOT NULL,
+                    state VARCHAR NOT NULL,
+                    pincode VARCHAR NOT NULL,
+                    country VARCHAR NOT NULL DEFAULT 'India',
+                    phone VARCHAR NOT NULL,
+                    email VARCHAR NOT NULL,
+                    website VARCHAR,
+                    registration_number VARCHAR NOT NULL,
+                    gstin VARCHAR,
+                    pan VARCHAR,
+                    gst_certificate_name VARCHAR,
+                    status VARCHAR NOT NULL DEFAULT 'pending',
+                    submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    reviewed_at TIMESTAMP,
+                    rejection_reason TEXT
+                )
+                """
+            )
+        )
+
 
 # Keep the existing database updated with small schema changes.
 run_simple_migrations()
@@ -243,6 +291,8 @@ app.add_middleware(
 
 # Register all route files.
 app.include_router(auth.router)
+app.include_router(admin.router)
+app.include_router(business.router)
 app.include_router(business_pages.router)
 app.include_router(dashboard.router)
 app.include_router(sales.router)
