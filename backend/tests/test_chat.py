@@ -51,7 +51,7 @@ def test_offline_reply_quotes_live_figures(db):
     # date_trunc, which the SQLite test database doesn't have.
     db.add(models.Product(name="Rice", product_code="item_9", supplier_stock=5, reorder_level=10))
     db.add_all([
-        models.Sale(product_code="item_9", sale_date=date(2024, 1, d), date=date(2024, 1, d), quantity=1, quantity_sold=1, revenue=1000.0, profit=250.0)
+        models.Sale(product_code="item_9", sale_date=date(2024, 1, d), quantity_sold=1, revenue=1000.0, profit=250.0)
         for d in (1, 2)
     ])
     db.commit()

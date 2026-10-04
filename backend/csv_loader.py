@@ -181,7 +181,6 @@ def load_excel_tables(db: Session) -> None:
             {
                 "business_id": owner_id,
                 "supplier_code": code,
-                "supplier_name": s_name,
                 "name": s_name or code or "Supplier",
                 "location": _clean_str(r.get("location")),
                 "rating": _as_float(r.get("rating")),
@@ -275,8 +274,6 @@ def load_excel_tables(db: Session) -> None:
             {
                 "business_id": owner_id,
                 "product_id": prod_id_map.get(p_code),
-                "quantity": qty,
-                "date": s_date or datetime.utcnow().date(),
                 "sale_date": s_date,
                 "branch_id": _clean_str(r.get("branch_id")),
                 "product_code": p_code,
@@ -369,7 +366,7 @@ def sync_supplier_users(db: Session) -> None:
         email = f"{supplier.supplier_code}@smarterp.local"
         existing_user = users_by_supplier_code.get(supplier.supplier_code) or users_by_email.get(email.lower())
         if existing_user:
-            existing_user.name = supplier.supplier_name or supplier.name or existing_user.name
+            existing_user.name = supplier.name or existing_user.name
             existing_user.role = "supplier"
             existing_user.gstin = existing_user.gstin or _dummy_supplier_gstin(supplier, index)
             existing_user.supplier_code = supplier.supplier_code
@@ -379,7 +376,7 @@ def sync_supplier_users(db: Session) -> None:
         print(f"Seeded supplier user {email} with temporary password: {temp_password}", flush=True)
         new_rows.append(
             {
-                "name": supplier.supplier_name or supplier.name or supplier.supplier_code,
+                "name": supplier.name or supplier.supplier_code,
                 "email": email,
                 "password": pwd_context.hash(temp_password),
                 "role": "supplier",

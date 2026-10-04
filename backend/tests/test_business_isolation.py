@@ -51,8 +51,8 @@ def _seed(db, business, prefix, stock):
             day = date(2023, 1, 1) + timedelta(days=i)
             db.add(models.Sale(
                 product_id=product.id, product_code=product.product_code, business_id=business.id,
-                quantity=10 + i % 3, quantity_sold=10 + i % 3, revenue=100.0, profit=30.0, price=10.0,
-                date=day, sale_date=day, weekday=day.weekday(), month=day.month, is_weekend=day.weekday() >= 5, promo=False,
+                quantity_sold=10 + i % 3, revenue=100.0, profit=30.0, price=10.0,
+                sale_date=day, weekday=day.weekday(), month=day.month, is_weekend=day.weekday() >= 5, promo=False,
             ))
 
 
@@ -240,3 +240,23 @@ def test_chatbot_figures_are_per_business(world):
     alpha_session.close()
     beta_session.close()
 
+
+
+def test_api_sale_and_imported_sale_fill_the_same_columns(world, db):
+    """TASK-50: POST /sales and the file import produce consistent rows."""
+    client = world["client"]
+    csv = "sale_date,product_id,quantity_sold,sales_amount,price\n2024-03-04,alpha_item_1,4,40.0,10.0\n"
+    assert client.post("/api/data/import", files={"file": ("a.csv", csv, "text/csv")}, headers=ALPHA).status_code == 200
+    product = world["Session"]()
+    product.info["business_id"] = world["alpha"].id
+    product_id = product.query(models.Product).filter_by(product_code="alpha_item_1").one().id
+    product.close()
+    created = client.post("/sales/", json={"product_id": product_id, "quantity_sold": 4, "sale_date": "2024-03-04", "price": 10.0}, headers=ALPHA)
+    assert created.status_code == 200, created.text
+
+    check = world["Session"]()
+    imported, api = check.query(models.Sale).filter_by(business_id=world["alpha"].id).order_by(models.Sale.id).all()
+    columns = ("product_code", "quantity_sold", "sale_date", "price", "revenue", "weekday", "month", "is_weekend")
+    assert [getattr(imported, c) for c in columns] == [getattr(api, c) for c in columns]
+    assert imported.product_id == api.product_id == product_id
+    check.close()

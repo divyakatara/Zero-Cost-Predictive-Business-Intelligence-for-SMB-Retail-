@@ -22,8 +22,8 @@ def product(db, tmp_path, monkeypatch):
 
 def _add_sale(db, product, day, units):
     db.add(models.Sale(
-        product_id=product.id, product_code=product.product_code, quantity=units, quantity_sold=units,
-        date=day, sale_date=day, weekday=day.weekday(), month=day.month, is_weekend=day.weekday() >= 5, promo=False,
+        product_id=product.id, product_code=product.product_code, quantity_sold=units,
+        sale_date=day, weekday=day.weekday(), month=day.month, is_weekend=day.weekday() >= 5, promo=False,
     ))
 
 

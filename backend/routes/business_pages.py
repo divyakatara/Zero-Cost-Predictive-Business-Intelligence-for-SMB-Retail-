@@ -46,6 +46,7 @@ def build_inventory_overview(db: Session, supplier_code: Optional[str] = None):
     if supplier_code is not None:
         query = query.filter(models.Product.supplier_code == supplier_code)
     products = query.order_by(models.Product.product_code.asc()).all()
+    supplier_names = dict(db.query(models.Supplier.supplier_code, models.Supplier.name).all())
     rows = []
     critical_items = 0
     low_stock_items = 0
@@ -69,12 +70,12 @@ def build_inventory_overview(db: Session, supplier_code: Optional[str] = None):
                 "id": product.product_code or f"SKU-{product.id:03d}",
                 "product_id": product.id,
                 "name": product.product_code or product.name,
-                "category": product.category or product.location or "General",
+                "category": product.category or "General",
                 "qty": product.supplier_stock or 0,
                 "reorder": product.reorder_level or 0,
                 "status": status,
                 "unit": "units",
-                "supplier": product.supplier_name or product.supplier_code or "-",
+                "supplier": supplier_names.get(product.supplier_code) or product.supplier_code or "-",
                 "updated": product.branch_id or "-",
                 "retailer": product.business.name if product.business else "-",
             }
@@ -285,7 +286,7 @@ def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get
 
         return {
             "id": supplier.id,
-            "name": supplier.supplier_name or supplier.name,
+            "name": supplier.name,
             "category": supplier.location or "General",
             "rating": round(float(supplier.rating or 0), 1),
             "reviews": int((supplier.stock_utilization_rate or 0) / 10),
@@ -385,7 +386,7 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
 
     total_stock = sum(product.supplier_stock or 0 for product in products)
     total_quantity_sold = (
-        in_period(db.query(func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0)))
+        in_period(db.query(func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, 0)), 0)))
         .scalar()
         or 0
     )
@@ -437,7 +438,7 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
     forecast_accuracy = round(sum(accuracy_values) / len(accuracy_values), 1) if accuracy_values else 0
 
     product_lookup = {
-        product.product_code: product.category or product.location or "General"
+        product.product_code: product.category or "General"
         for product in products
         if product.product_code
     }
@@ -486,7 +487,7 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
         in_period(
             db.query(
                 models.Sale.product_code,
-                func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, models.Sale.quantity, 0)), 0).label("qty"),
+                func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, 0)), 0).label("qty"),
                 func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
                 func.coalesce(func.sum(models.Sale.profit), 0.0).label("profit"),
             )
@@ -515,7 +516,7 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
     for supplier in suppliers[:4]:
         supplier_data.append(
             {
-                "name": supplier.supplier_name or supplier.name,
+                "name": supplier.name,
                 "category": supplier.location or "General",
                 "fillRate": f"{max(0, 100 - (supplier.supply_risk_score or 0) * 10)}%",
                 "onTime": f"{max(0, 100 - (supplier.lead_time or 0) * 5)}%",
@@ -588,7 +589,7 @@ def insights_overview(db: Session = Depends(get_db)):
             "reason": "Highest-revenue product can be highlighted for repeat orders." if top_product else "Not enough sales data yet.",
         },
         {
-            "title": f"Review {risky_suppliers[0].supplier_name or risky_suppliers[0].name}" if risky_suppliers else "Supplier base looks stable",
+            "title": f"Review {risky_suppliers[0].name}" if risky_suppliers else "Supplier base looks stable",
             "subtitle": "Supplier",
             "priority": f"Priority {min(5, len(risky_suppliers))}",
             "impact": f"{len(risky_suppliers)} risky suppliers" if risky_suppliers else "0 risk flags",
@@ -707,7 +708,7 @@ def alerts_overview(db: Session = Depends(get_db)):
 
     system_alerts = [
         {
-            "title": f"Supplier risk raised for {supplier.supplier_name or supplier.name}",
+            "title": f"Supplier risk raised for {supplier.name}",
             "subtitle": "Operations",
             "severity": "Medium" if (supplier.supply_risk_score or 0) == 3 else "High",
             "status": "Open",

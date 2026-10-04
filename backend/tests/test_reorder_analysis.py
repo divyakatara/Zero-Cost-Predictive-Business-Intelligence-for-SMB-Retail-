@@ -21,7 +21,7 @@ def _product(db, code, stock, reorder_level, daily_sales=10, lead_time=4):
     # 31 days of steady sales ending on LATEST_SALE.
     for i in range(31):
         day = LATEST_SALE - timedelta(days=i)
-        db.add(models.Sale(product_code=code, quantity=daily_sales, quantity_sold=daily_sales, date=day, sale_date=day))
+        db.add(models.Sale(product_code=code, quantity_sold=daily_sales, sale_date=day))
     db.commit()
     return product
 

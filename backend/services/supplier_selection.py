@@ -66,7 +66,7 @@ def _supplier_card(supplier: "models.Supplier", is_assigned: bool) -> dict:
     return {
         "supplier_id": supplier.id,
         "supplier_code": supplier.supplier_code,
-        "name": supplier.supplier_name or supplier.name,
+        "name": supplier.name,
         "is_assigned_supplier": is_assigned,
         "weighted_score": supplier.weighted_score,
         "rank": supplier.rank,
@@ -80,10 +80,9 @@ def _supplier_card(supplier: "models.Supplier", is_assigned: bool) -> dict:
 
 def _resolve_assigned_supplier(db: Session, product: "models.Product") -> Optional["models.Supplier"]:
     """Product.supplier_id (the relational FK) is frequently NULL even when a
-    supplier is clearly assigned via the CSV-populated `supplier_code`/
-    `supplier_name` fields (the same legacy dual-column issue that affects
-    Sale.product_id vs Sale.product_code elsewhere in this codebase). Fall
-    back to supplier_code so an already-known assignment isn't ignored.
+    supplier is clearly assigned via the CSV-populated `supplier_code` (the
+    same way Sale.product_id vs Sale.product_code works elsewhere). Fall back
+    to supplier_code so an already-known assignment isn't ignored.
     """
     if product.supplier:
         return product.supplier

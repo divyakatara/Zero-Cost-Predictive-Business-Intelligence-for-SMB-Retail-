@@ -35,7 +35,6 @@ class Supplier(Base):
     lead_time = Column(Integer, nullable=True)
 
     supplier_code = Column(String, unique=True, index=True, nullable=True)
-    supplier_name = Column(String, nullable=True)
     contact_number = Column(String, nullable=True)
     product_code = Column(String, nullable=True)
     branch_id = Column(String, nullable=True)
@@ -71,10 +70,9 @@ class Product(Base):
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
 
     product_code = Column(String, index=True, nullable=True)
+    # The supplier's own details (name, location, contact) live on Supplier,
+    # looked up by supplier_code; they are not copied onto products.
     supplier_code = Column(String, nullable=True)
-    supplier_name = Column(String, nullable=True)
-    location = Column(String, nullable=True)
-    contact_number = Column(String, nullable=True)
     branch_id = Column(String, nullable=True)
     supplier_stock = Column(Integer, nullable=True)
     reorder_level = Column(Integer, nullable=True)
@@ -101,13 +99,13 @@ class Sale(Base):
     # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
     business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
     product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
-    quantity = Column(Integer, nullable=False)
-    date = Column(Date, nullable=False)
 
-    sale_date = Column(Date, nullable=True)
+    # One column per fact (TASK-50): quantity_sold / sale_date replaced the
+    # duplicate quantity / date columns.
+    sale_date = Column(Date, nullable=False)
     branch_id = Column(String, nullable=True)
     product_code = Column(String, nullable=True)
-    quantity_sold = Column(Integer, nullable=True)
+    quantity_sold = Column(Integer, nullable=False)
     price = Column(Float, nullable=True)
     promo = Column(Boolean, nullable=True)
     weekday = Column(Integer, nullable=True)
