@@ -16,7 +16,6 @@ const C = {
 
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
-const filters = ["Today", "This Week", "This Month"];
 
 const emptyState = {
   headerNote: "Smart suggestions to improve sales and business performance · Waiting for backend data",
@@ -27,7 +26,6 @@ const emptyState = {
 };
 
 export default function BAIInsightsPage() {
-  const [filter, setFilter] = useState("Today");
   const [data, setData] = useState(emptyState);
   const [error, setError] = useState("");
 
@@ -65,29 +63,6 @@ export default function BAIInsightsPage() {
           </div>
           <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>{data.headerNote}</p>
         </div>
-        <div style={{ display: "flex", background: "#eee8e0", borderRadius: 10, padding: 4, gap: 2 }}>
-          {filters.map((item) => (
-            <button
-              key={item}
-              onClick={() => setFilter(item)}
-              style={{
-                padding: "8px 16px",
-                borderRadius: 7,
-                border: "none",
-                background: filter === item ? C.card : "transparent",
-                color: filter === item ? C.text : C.textDim,
-                fontWeight: filter === item ? 600 : 400,
-                fontSize: 12,
-                cursor: "pointer",
-                fontFamily: "'IBM Plex Sans', sans-serif",
-                boxShadow: filter === item ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
-                transition: "all .15s",
-              }}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
       </div>
 
       {error && (
@@ -114,7 +89,7 @@ export default function BAIInsightsPage() {
         <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ marginBottom: 18 }}>
             <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Top AI Suggestions</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recommended actions for {filter.toLowerCase()}</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recommended actions based on your current stock, sales and suppliers</div>
           </div>
           <div style={{ display: "grid", gap: 12 }}>
             {(data.primarySuggestions || []).map((item) => (
