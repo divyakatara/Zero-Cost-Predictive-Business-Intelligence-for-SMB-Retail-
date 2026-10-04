@@ -1,12 +1,15 @@
 import re
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import models
 import schemas
 from database import get_db
+from routes.auth import require_admin
 
 
 router = APIRouter(prefix="/business", tags=["Business"])
@@ -16,6 +19,8 @@ def serialize_business(business: models.Business):
     return {
         "id": business.id,
         "owner_user_id": business.owner_user_id,
+        # The owner's login email; the business contact email can differ.
+        "userEmail": business.owner.email if business.owner else None,
 
         "businessName": business.name,
         "businessType": business.business_type,
@@ -237,3 +242,77 @@ def get_business_by_email(
         )
 
     return serialize_business(business)
+
+
+# ── Admin review ─────────────────────────────────────────────────────────────
+# An admin decision is stored on the business row itself, so the owner sees it
+# from any browser on their next status check.
+
+class RejectBusinessRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+def _get_business_or_404(db: Session, business_id: int) -> models.Business:
+    business = db.query(models.Business).filter(models.Business.id == business_id).first()
+    if not business:
+        raise HTTPException(status_code=404, detail="Business registration not found.")
+    return business
+
+
+def _set_review(db: Session, business: models.Business, status: str, reason: Optional[str]):
+    business.status = status
+    business.reviewed_at = datetime.utcnow()
+    business.rejection_reason = reason
+    db.commit()
+    db.refresh(business)
+    return serialize_business(business)
+
+
+@router.get("/admin/all")
+def list_businesses_for_admin(
+    status: Optional[str] = None,
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
+    query = db.query(models.Business).order_by(models.Business.submitted_at.desc())
+    if status:
+        query = query.filter(models.Business.status == status)
+    return [serialize_business(business) for business in query.all()]
+
+
+@router.post("/{business_id}/approve")
+def approve_business(
+    business_id: int,
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
+    business = _get_business_or_404(db, business_id)
+    if business.status not in ("pending", "rejected"):
+        raise HTTPException(status_code=409, detail=f"Cannot approve a business that is {business.status}.")
+    return _set_review(db, business, "approved", None)
+
+
+@router.post("/{business_id}/reject")
+def reject_business(
+    business_id: int,
+    payload: RejectBusinessRequest,
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
+    business = _get_business_or_404(db, business_id)
+    if business.status != "pending":
+        raise HTTPException(status_code=409, detail=f"Cannot reject a business that is {business.status}.")
+    reason = (payload.reason or "").strip() or "Details could not be verified."
+    return _set_review(db, business, "rejected", reason)
+
+
+@router.post("/{business_id}/revoke")
+def revoke_business(
+    business_id: int,
+    db: Session = Depends(get_db),
+    _admin: dict = Depends(require_admin),
+):
+    business = _get_business_or_404(db, business_id)
+    if business.status != "approved":
+        raise HTTPException(status_code=409, detail=f"Cannot revoke a business that is {business.status}.")
+    return _set_review(db, business, "pending", "Approval revoked by Admin.")
