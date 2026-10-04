@@ -6,16 +6,15 @@ from fastapi import HTTPException
 
 import models
 from ml.anomaly import AnomalyResult
-from routes import anomaly
+from routes import anomaly, inventory
 from routes.inventory import predict_demand
 
 
 @pytest.fixture
 def product(db):
-    product = models.Product(name="Rice", product_code="item_1")
+    product = models.Product(name="Rice", product_code="item_1", supplier_stock=30, reorder_level=50)
     db.add(product)
     db.flush()
-    db.add(models.Inventory(product_id=product.id, stock=30, reorder_level=50))
     start = date(2023, 1, 1)
     for i in range(30):
         day = start + timedelta(days=i)
@@ -48,10 +47,11 @@ def _anomalies(**filters):
     return anomaly.get_anomalies(**{**params, **filters})
 
 
-def test_product_code_round_trips_between_prediction_and_anomalies(db, product, anomalies):
-    prediction = predict_demand("item_1", db)
+def test_product_code_round_trips_between_prediction_and_anomalies(db, product, anomalies, tmp_path, monkeypatch):
+    monkeypatch.setattr(inventory, "DEMAND_CACHE_DIR", tmp_path)
+    prediction = predict_demand("item_1", db=db)
     assert prediction["product_code"] == "item_1"
-    assert prediction["current_stock"] == 30  # translated to products.id internally for the inventory join
+    assert prediction["current_stock"] == 30  # the product's stock, as shown on the Inventory page
 
     matches = _anomalies(product_code=prediction["product_code"])["results"]
 
@@ -65,6 +65,6 @@ def test_product_id_query_param_still_works_as_an_alias(anomalies):
 
 def test_unknown_product_code_returns_404(db):
     with pytest.raises(HTTPException) as exc:
-        predict_demand("item_404", db)
+        predict_demand("item_404", db=db)
 
     assert exc.value.status_code == 404

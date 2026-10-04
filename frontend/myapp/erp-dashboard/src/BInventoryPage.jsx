@@ -34,6 +34,21 @@ export default function InventoryPage({ onReorder } = {}) {
   const [search, setSearch] = useState("");
   const [data, setData] = useState(emptyData);
   const [error, setError] = useState("");
+  const [forecasts, setForecasts] = useState({});
+  const [forecastNote, setForecastNote] = useState("Loading Decision Tree forecasts…");
+
+  // Decision Tree forecasts load separately so the table never waits on the model.
+  useEffect(() => {
+    let ignore = false;
+    fetchJson("/inventory/predictions")
+      .then((response) => {
+        if (ignore) return;
+        setForecasts(Object.fromEntries(response.items.map((item) => [item.product_code, item])));
+        setForecastNote(`${response.model} · ${response.horizon} · ${response.suggestion_rule}`);
+      })
+      .catch(() => { if (!ignore) setForecastNote("Decision Tree forecasts are unavailable right now."); });
+    return () => { ignore = true; };
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -124,7 +139,7 @@ export default function InventoryPage({ onReorder } = {}) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: C.greenSubtle, borderBottom: `1px solid ${C.border}` }}>
-              {["SKU", "Product", "Category", "Stock Level", "Reorder Qty", "Status", "Supplier", "Updated", "Action"].map((heading) => (
+              {["SKU", "Product", "Category", "Stock Level", "Reorder Level", "Status", "Demand Forecast (AI)", "Supplier", "Action"].map((heading) => (
                 <th key={heading} style={{ textAlign: "left", padding: "12px 20px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>
                   {heading}
                 </th>
@@ -159,8 +174,19 @@ export default function InventoryPage({ onReorder } = {}) {
                       {status.label}
                     </span>
                   </td>
+                  <td style={{ padding: "14px 20px", fontSize: 12, whiteSpace: "nowrap" }}>
+                    {forecasts[item.id]?.predicted_demand != null ? (
+                      <div title={`Decision Tree trained on ${forecasts[item.id].records_used} days of sales`}>
+                        <div style={{ color: C.text, fontWeight: 600 }}>{forecasts[item.id].predicted_demand} units tomorrow</div>
+                        <div style={{ color: forecasts[item.id].suggested_order > 0 ? C.green : C.textDim, marginTop: 2 }}>
+                          {forecasts[item.id].suggested_order > 0 ? `Suggest ordering ${forecasts[item.id].suggested_order}` : "No order needed"}
+                        </div>
+                      </div>
+                    ) : (
+                      <span style={{ color: C.textDim }}>{forecasts[item.id]?.error ? "Not enough history" : "—"}</span>
+                    )}
+                  </td>
                   <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted }}>{item.supplier}</td>
-                  <td style={{ padding: "14px 20px", fontSize: 12, color: C.textDim }}>{item.updated}</td>
                   <td style={{ padding: "14px 20px" }}>
                     {item.status === "ok" ? (
                       <span style={{ fontSize: 12, color: C.textDim }} title="Stock is above the reorder threshold">Stock OK</span>
@@ -191,6 +217,9 @@ export default function InventoryPage({ onReorder } = {}) {
             })}
           </tbody>
         </table>
+        <div style={{ padding: "10px 20px", fontSize: 11, color: C.textDim, borderTop: `1px solid ${C.border}` }}>
+          Demand forecast: {forecastNote}
+        </div>
       </div>
     </div>
   );
