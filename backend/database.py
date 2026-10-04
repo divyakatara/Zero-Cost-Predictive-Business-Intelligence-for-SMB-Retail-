@@ -9,10 +9,12 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 
 # PostgreSQL database URL. Set DATABASE_URL in backend/.env (gitignored) so each
 # developer can use their own local password; see backend/.env.example.
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:pwd-56@localhost:5432/smart_erp_users",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL is not set. Copy backend/.env.example to backend/.env and "
+        "fill in your local PostgreSQL connection string."
+    )
 
 # SQLAlchemy engine connects FastAPI to PostgreSQL.
 engine = create_engine(DATABASE_URL)

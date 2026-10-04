@@ -1,3 +1,5 @@
+import os
+
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import text
@@ -332,10 +334,12 @@ with engine.begin() as connection:
 
 app = FastAPI(title="Smart ERP Backend")
 
+# Only the frontend may call the API from a browser. FRONTEND_ORIGINS in
+# backend/.env (comma-separated) overrides the local Vite dev server default.
 ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server (erp-dashboard)
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",  # in case myapp (CRA) is also used
+    origin.strip()
+    for origin in os.getenv("FRONTEND_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
+    if origin.strip()
 ]
 
 app.add_middleware(
