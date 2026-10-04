@@ -37,3 +37,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Per-product Decision Tree cache (rebuilt automatically)
+backend/ml/cache/decision_tree_*.joblib

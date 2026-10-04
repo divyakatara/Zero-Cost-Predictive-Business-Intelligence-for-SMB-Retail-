@@ -1,6 +1,11 @@
+import re
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import List
 
+import joblib
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 import models
@@ -90,13 +95,139 @@ def build_forecast_row(data):
     }
 
 
+# Trained trees are persisted here, one file per product (gitignored).
+DEMAND_CACHE_DIR = Path(__file__).resolve().parents[1] / "ml" / "cache"
+
+
+def _sales_signature(db: Session, product: "models.Product") -> list:
+    """Fingerprint of a product's sales history. A cached tree is reused only
+    while this matches, so new or re-imported data triggers a retrain."""
+    count, latest, units = (
+        db.query(
+            func.count(models.Sale.id),
+            func.max(models.Sale.sale_date),
+            func.coalesce(func.sum(models.Sale.quantity_sold), 0),
+        )
+        .filter(models.Sale.product_id == product.id)
+        .one()
+    )
+    return [int(count), latest.isoformat() if latest else None, int(units)]
+
+
+def _cache_path(product_code: str) -> Path:
+    return DEMAND_CACHE_DIR / f"decision_tree_{re.sub(r'[^A-Za-z0-9_-]', '_', product_code)}.joblib"
+
+
+def get_demand_model(db: Session, product: "models.Product", refresh: bool = False) -> tuple[dict, bool]:
+    """(cached model bundle, retrained?) for one product. Trains and persists
+    a Decision Tree only when there is no cache, the sales data changed, or a
+    refresh is requested."""
+    signature = _sales_signature(db, product)
+    path = _cache_path(product.product_code)
+    if not refresh and path.exists():
+        try:
+            bundle = joblib.load(path)
+            if bundle.get("signature") == signature:
+                return bundle, False
+        except Exception:
+            pass  # unreadable cache: retrain below
+
+    if signature[0] < 10:
+        raise HTTPException(
+            status_code=400,
+            detail="Not enough sales history for this product to make a prediction (need at least 10 records).",
+        )
+    sales = (
+        db.query(models.Sale)
+        .filter(models.Sale.product_id == product.id)
+        .order_by(models.Sale.sale_date)
+        .all()
+    )
+    data = build_training_frame(sales)
+    if len(data) < 7:
+        raise HTTPException(status_code=400, detail="Not enough sales history for this product to make a prediction.")
+
+    # Train the Decision Tree(ML)
+    model = DecisionTreeRegressor(max_depth=6, random_state=42)
+    model.fit(data[FEATURES], data["quantity_sold"])
+
+    bundle = {
+        "signature": signature,
+        "model": model,
+        "forecast_row": build_forecast_row(data),
+        "records_used": len(data),
+        "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+    DEMAND_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    joblib.dump(bundle, path)
+    return bundle, True
+
+
+def predict_for_product(db: Session, product: "models.Product", refresh: bool = False) -> dict:
+    bundle, retrained = get_demand_model(db, product, refresh=refresh)
+    #ML stmt
+    predicted_demand = max(0, round(bundle["model"].predict(pd.DataFrame([bundle["forecast_row"]]))[0]))
+
+    # Same stock fields the Inventory page and the procurement agent use.
+    current_stock = product.supplier_stock
+    reorder_level = product.reorder_level
+
+    needs_reorder = None
+    suggested_order = None
+    if current_stock is not None:
+        needs_reorder = current_stock < predicted_demand or (
+            reorder_level is not None and current_stock <= reorder_level
+        )
+        # Enough to cover the predicted demand and still sit at the reorder level.
+        suggested_order = max(0, predicted_demand + (reorder_level or 0) - current_stock)
+
+    return {
+        "product_code": product.product_code,
+        "predicted_demand": int(predicted_demand),
+        "current_stock": current_stock,
+        "reorder_level": reorder_level,
+        "needs_reorder": needs_reorder,
+        "suggested_order": suggested_order,
+        "records_used": bundle["records_used"],
+        "model_cached": not retrained,
+        "trained_at": bundle["trained_at"],
+    }
+
+
+@router.get("/predictions")
+def predict_all(refresh: bool = False, db: Session = Depends(get_db)):
+    """Next-day Decision Tree demand prediction for every product."""
+    if pd is None or DecisionTreeRegressor is None:
+        raise HTTPException(status_code=503, detail="Demand forecasting is unavailable in this environment.")
+    items = []
+    products = (
+        db.query(models.Product)
+        .filter(models.Product.product_code.isnot(None))
+        .order_by(models.Product.product_code)
+        .all()
+    )
+    for product in products:
+        try:
+            items.append(predict_for_product(db, product, refresh=refresh))
+        except HTTPException as exc:
+            items.append({"product_code": product.product_code, "error": exc.detail})
+    return {
+        "model": "DecisionTreeRegressor(max_depth=6)",
+        "horizon": "next day",
+        "suggestion_rule": "suggested_order = max(0, predicted_demand + reorder_level - current_stock)",
+        "items": items,
+    }
+
+
 @router.get("/predict/{product_code}")
-def predict_demand(product_code: str, db: Session = Depends(get_db)):
+def predict_demand(product_code: str, refresh: bool = False, db: Session = Depends(get_db)):
     """Predict next-period demand for a product using a Decision Tree,
     and compare it against current stock to recommend a reorder.
 
     Takes the public product_code (e.g. "item_1"), the same identifier the
-    anomaly API uses; it is translated to products.id internally.
+    anomaly API uses; it is translated to products.id internally. The trained
+    tree is cached per product and reused until that product's sales change
+    (or ?refresh=true).
     """
     if pd is None or DecisionTreeRegressor is None:
         raise HTTPException(
@@ -108,59 +239,4 @@ def predict_demand(product_code: str, db: Session = Depends(get_db)):
     if product is None:
         raise HTTPException(status_code=404, detail=f"No product with product_code '{product_code}'.")
 
-    # Pull this product's sales history
-    sales = (
-        db.query(models.Sale)
-        .filter(models.Sale.product_id == product.id)
-        .order_by(models.Sale.sale_date)
-        .all()
-    )
-
-    if len(sales) < 10:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough sales history for this product to make a prediction (need at least 10 records).",
-        )
-
-    data = build_training_frame(sales)
-    if len(data) < 7:
-        raise HTTPException(
-            status_code=400,
-            detail="Not enough sales history for this product to make a prediction.",
-        )
-
-    X = data[FEATURES]
-    y = data["quantity_sold"]
-
-    # Train the Decision Tree(ML)
-    model = DecisionTreeRegressor(max_depth=6, random_state=42)
-    model.fit(X, y)
-
-    next_input = pd.DataFrame([build_forecast_row(data)])
-    #ML stmt
-    predicted_demand = max(0, round(model.predict(next_input)[0]))
-
-    # Compare against current inventory
-    inventory_item = (
-        db.query(models.Inventory)
-        .filter(models.Inventory.product_id == product.id)
-        .first()
-    )
-
-    current_stock = inventory_item.stock if inventory_item else None
-    reorder_level = inventory_item.reorder_level if inventory_item else None
-
-    needs_reorder = None
-    if current_stock is not None:
-        needs_reorder = current_stock < predicted_demand or (
-            reorder_level is not None and current_stock <= reorder_level
-        )
-
-    return {
-        "product_code": product_code,
-        "predicted_demand": int(predicted_demand),
-        "current_stock": current_stock,
-        "reorder_level": reorder_level,
-        "needs_reorder": needs_reorder,
-        "records_used": len(data),
-    }
+    return predict_for_product(db, product, refresh=refresh)
