@@ -204,7 +204,7 @@ export default function SalesPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
         <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Top Selling Products</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Ranked by revenue · {filter}</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Ranked by all-time revenue</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {(data.topProducts || []).map((product, index) => (
               <div key={product.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 10, background: C.greenSubtle, border: `1px solid ${C.greenBorder}` }}>
@@ -230,7 +230,7 @@ export default function SalesPage() {
 
         <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Revenue by Product</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Hover over bars for details · {filter}</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>All-time revenue · hover over bars for details</div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={data.topProductsChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={32}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
