@@ -40,11 +40,13 @@ export default function App() {
     return () => { cancelled = true; };
   }, []);
 
-  // While a registration is waiting on (or was refused by) an admin, re-check
-  // the server so the owner sees the decision without logging in again.
-  const awaitingReview = user?.role === "business" && bizState === "has-record" && businessRecord?.status !== "approved";
+  // Re-check the registration with the server: a pending/rejected owner sees
+  // the admin's decision without logging in again, and an approved owner whose
+  // approval is revoked is moved off the dashboard (its data calls would 403).
+  const hasRecord = user?.role === "business" && bizState === "has-record";
+  const isApproved = businessRecord?.status === "approved";
   useEffect(() => {
-    if (!awaitingReview || !user?.email) return undefined;
+    if (!hasRecord || !user?.email) return undefined;
     const email = user.email;
     const timer = setInterval(async () => {
       try {
@@ -53,9 +55,9 @@ export default function App() {
       } catch {
         /* keep the last known status; try again on the next tick */
       }
-    }, 10000);
+    }, isApproved ? 30000 : 10000);
     return () => clearInterval(timer);
-  }, [awaitingReview, user?.email]);
+  }, [hasRecord, isApproved, user?.email]);
 
   // Only use identity and role returned by the backend's token-verified session.
   async function applyVerifiedSession(userData) {
