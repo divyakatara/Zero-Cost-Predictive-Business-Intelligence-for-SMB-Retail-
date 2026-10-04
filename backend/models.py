@@ -68,7 +68,7 @@ class Product(Base):
     category = Column(String, nullable=True)
     price = Column(Float, nullable=True)
     cost_price = Column(Float, nullable=True)
-    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True)
+    supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
 
     product_code = Column(String, index=True, nullable=True)
     supplier_code = Column(String, nullable=True)
@@ -100,7 +100,7 @@ class Sale(Base):
     id = Column(Integer, primary_key=True, index=True)
     # Owning business (multi-tenancy, TASK-12). See services/tenancy.py.
     business_id = Column(Integer, ForeignKey("businesses.id", ondelete="CASCADE"), nullable=True, index=True)
-    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True, index=True)
     quantity = Column(Integer, nullable=False)
     date = Column(Date, nullable=False)
 

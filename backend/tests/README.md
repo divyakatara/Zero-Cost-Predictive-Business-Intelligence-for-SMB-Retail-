@@ -16,6 +16,7 @@ The ML tests read the seeded demo workbook in `backend/data/`. Models are traine
 |---|---|
 | **Cross-business isolation:** no endpoint returns or changes another business's rows; import/clear/load-demo/history are scoped; chatbot figures per business | `test_business_isolation.py` |
 | Login, tokens, protected routes, password change | `test_auth.py` |
+| Alembic: fresh `upgrade head` matches `models.py`; FK indexes; downgrade round trip | `test_migrations.py` |
 | Business registration and resubmission | `test_business_registration.py` |
 | Admin approve / reject / revoke | `test_business_admin_review.py` |
 | GST certificate upload and access control | `test_gst_certificate.py` |
