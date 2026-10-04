@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy.orm import deferred, relationship
 
 from database import Base
 
@@ -248,8 +248,11 @@ class Business(Base):
     gstin = Column(String, nullable=True)
     pan = Column(String, nullable=True)
 
-    # GST file handling is intentionally out of scope for TASK-06.
     gst_certificate_name = Column(String, nullable=True)
+    # The uploaded certificate file itself (PDF/JPG/PNG, max 5 MB). Deferred so
+    # listing businesses never loads the file bytes.
+    gst_certificate_type = Column(String, nullable=True)
+    gst_certificate_data = deferred(Column(LargeBinary, nullable=True))
 
     status = Column(
         String,

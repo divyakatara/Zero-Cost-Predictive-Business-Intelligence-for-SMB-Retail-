@@ -277,6 +277,12 @@ with engine.begin() as connection:
                 """
             )
         )
+            connection.execute(
+                text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_type VARCHAR")
+            )
+            connection.execute(
+                text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_data BYTEA")
+            )
 
 app = FastAPI(title="Smart ERP Backend")
 
