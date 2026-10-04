@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
+from types import SimpleNamespace
+
+from .admin import create_auth_token
 
 import models
 import schemas
@@ -44,7 +47,10 @@ def serialize_user(user: models.User):
 
 
 @router.post("/register", response_model=schemas.UserRegisterResponse)
-def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
+def register_user(
+    user: schemas.UserCreate,
+    db: Session = Depends(get_db),
+):
     """Create a new user account."""
     if is_gstin_required(user.role) and not user.gstin:
         raise HTTPException(
@@ -52,19 +58,33 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
             detail="GSTIN is required for business and supplier users",
         )
 
-    existing_user = db.query(models.User).filter(models.User.email == user.email).first()
+    existing_user = (
+        db.query(models.User)
+        .filter(models.User.email == user.email)
+        .first()
+    )
+
     if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered",
+        )
 
     supplier_code = None
+
     if user.role.lower() == "supplier" and user.supplier_id:
         supplier_record = (
             db.query(models.Supplier)
             .filter(models.Supplier.supplier_code == user.supplier_id)
             .first()
         )
+
         if not supplier_record:
-            raise HTTPException(status_code=400, detail="Supplier ID not found")
+            raise HTTPException(
+                status_code=400,
+                detail="Supplier ID not found",
+            )
+
         supplier_code = supplier_record.supplier_code
 
     new_user = models.User(
@@ -75,45 +95,94 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
         gstin=user.gstin,
         supplier_code=supplier_code,
     )
+
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
-    return {"message": "User registered successfully", "user": serialize_user(new_user)}
+
+    return {
+        "message": "User registered successfully",
+        "user": serialize_user(new_user),
+    }
 
 
 @router.post("/login")
-def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
+def login_user(
+    user: schemas.UserLogin,
+    db: Session = Depends(get_db),
+):
     """Check user email and password using the saved password hash."""
-    db_user = db.query(models.User).filter(models.User.email == user.email).first()
+
+    db_user = (
+        db.query(models.User)
+        .filter(models.User.email == user.email)
+        .first()
+    )
+
     if not db_user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+        )
 
     if password_is_hashed(db_user.password):
-        password_matches = verify_password(user.password, db_user.password)
+        password_matches = verify_password(
+            user.password,
+            db_user.password,
+        )
     else:
         # Upgrade old plain-text passwords from earlier development testing.
         password_matches = db_user.password == user.password
+
         if password_matches:
             db_user.password = hash_password(user.password)
             db.commit()
 
     if not password_matches:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid email or password",
+        )
 
     return {
         "message": "Login successful",
         "user": serialize_user(db_user),
+        "access_token": create_auth_token(db_user),
     }
 
 
 @router.post("/admin-login")
 def admin_login(user: schemas.UserLogin):
     """Authenticate administrator using secure environment variables."""
-    import os
-    env_admin_email = os.getenv("ADMIN_EMAIL", "admin@smarterp.com").strip().lower()
-    env_admin_password = os.getenv("ADMIN_PASSWORD", "admin123").strip()
 
-    if user.email.strip().lower() == env_admin_email and user.password == env_admin_password:
+    import os
+
+    env_admin_email = (
+        os.getenv("ADMIN_EMAIL", "admin@smarterp.com")
+        .strip()
+        .lower()
+    )
+
+    env_admin_password = (
+        os.getenv("ADMIN_PASSWORD", "admin123")
+        .strip()
+    )
+
+    if (
+        user.email.strip().lower() == env_admin_email
+        and user.password == env_admin_password
+    ):
+        # UserLogin only contains login credentials, so create a
+        # lightweight admin identity for token generation.
+        admin_user = SimpleNamespace(
+            id=0,
+            name="System Administrator",
+            email=env_admin_email,
+            role="admin",
+            gstin=None,
+            supplier_code=None,
+        )
+
         return {
             "message": "Admin login successful",
             "user": {
@@ -122,6 +191,10 @@ def admin_login(user: schemas.UserLogin):
                 "email": env_admin_email,
                 "role": "admin",
             },
+            "access_token": create_auth_token(admin_user),
         }
 
-    raise HTTPException(status_code=401, detail="Invalid admin credentials")
+    raise HTTPException(
+        status_code=401,
+        detail="Invalid admin credentials",
+    )
