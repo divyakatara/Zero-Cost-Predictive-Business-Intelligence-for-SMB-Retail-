@@ -70,3 +70,41 @@ def test_analytics_month_window_uses_latest_month(db, catalog):
     kpis = {k["label"]: k["value"] for k in result["kpis"]}
     assert kpis["Total Orders"] == "2"  # the November sale is outside December
     assert "December 2024" in result["headerNote"]
+
+
+def _business(db, owner_email, name, status="approved", contact_email=None):
+    owner = models.User(name=name, email=owner_email, password="x", role="business")
+    db.add(owner)
+    db.commit()
+    business = models.Business(
+        owner_user_id=owner.id, name=name, business_type="Retail", category="Grocery",
+        address_line1="1 St", city="Pune", state="MH", pincode="411001", phone="99", email=contact_email or owner_email,
+        registration_number="R1", status=status,
+    )
+    db.add(business)
+    db.commit()
+    return business
+
+
+def test_marketplace_splits_clients_from_other_approved_businesses(db, catalog, suppliers):
+    from routes.supplier import supplier_marketplace
+
+    _business(db, "alpha@shop.com", "Alpha Mart", contact_email="orders@alpha.com")
+    _business(db, "beta@shop.com", "Beta Stores")
+    _business(db, "gamma@shop.com", "Gamma Pending", status="pending")
+    supplier_1 = suppliers[0]
+    db.add_all([
+        models.PurchaseOrder(supplier_id=supplier_1.id, status="created", requested_by="orders@alpha.com", product_code="item_a", quantity=10),
+        models.PurchaseOrder(supplier_id=supplier_1.id, status="awaiting_approval", requested_by="ALPHA@shop.com", product_code="item_a", quantity=5),
+        models.PurchaseOrder(supplier_id=supplier_1.id, status="rejected", requested_by="beta@shop.com", product_code="item_a", quantity=7),
+        models.PurchaseOrder(supplier_id=suppliers[1].id, status="created", requested_by="beta@shop.com", product_code="item_c", quantity=3),
+    ])
+    db.commit()
+
+    result = supplier_marketplace("supplier_1", db=db, current_user=SUPPLIER_1)
+
+    assert [c["name"] for c in result["clients"]] == ["Alpha Mart"]
+    alpha = result["clients"][0]
+    assert (alpha["ordersPlaced"], alpha["ordersAwaiting"], alpha["unitsOrdered"]) == (1, 1, 10)
+    # Rejected orders and orders with other suppliers don't make a client; pending businesses aren't listed.
+    assert [b["name"] for b in result["otherBusinesses"]] == ["Beta Stores"]
