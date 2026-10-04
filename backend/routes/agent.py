@@ -36,6 +36,10 @@ class RejectRequest(BaseModel):
     reason: Optional[str] = None
 
 
+class CancelRequest(BaseModel):
+    cancelled_by: Optional[str] = None
+
+
 def _order_to_dict(order: "models.PurchaseOrder") -> dict:
     # Prefer the denormalized snapshot taken when the draft was created — it
     # survives the referenced product/supplier later being deleted (e.g. by
@@ -157,6 +161,16 @@ def reject_draft(order_id: int, payload: RejectRequest, db: Session = Depends(ge
         order = agent_orchestrator.reject_draft(
             db, order_id, rejected_by=payload.rejected_by, reason=payload.reason
         )
+    except AgentWorkflowError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    return _order_to_dict(order)
+
+
+@router.post("/drafts/{order_id}/cancel")
+def cancel_draft(order_id: int, payload: CancelRequest, db: Session = Depends(get_db)):
+    """Withdraw a draft awaiting approval without recording a formal rejection."""
+    try:
+        order = agent_orchestrator.cancel_draft(db, order_id, cancelled_by=payload.cancelled_by)
     except AgentWorkflowError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.message)
     return _order_to_dict(order)

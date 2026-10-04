@@ -382,3 +382,30 @@ def reject_draft(
             "Something went wrong while rejecting this order. The failure has been logged.",
             status_code=500,
         )
+
+
+def cancel_draft(
+    db: Session,
+    order_id: int,
+    cancelled_by: Optional[str] = None,
+) -> "models.PurchaseOrder":
+    """Withdraw a draft without formally rejecting it (e.g. opened by mistake)."""
+    order = db.query(models.PurchaseOrder).filter(models.PurchaseOrder.id == order_id).first()
+    if not order:
+        raise AgentWorkflowError("Purchase order draft not found.", status_code=404)
+
+    _require_transition(order, "cancelled")
+
+    order.status = "cancelled"
+    order.decided_by = cancelled_by
+    order.decision_reason = "Withdrawn by business user."
+    db.commit()
+    db.refresh(order)
+
+    _log(
+        db, purchase_order_id=order.id, product_id=order.product_id,
+        action_type="cancelled", status="success",
+        message=f"Draft #{order.id} withdrawn{f' by {cancelled_by}' if cancelled_by else ''}; no order was created.",
+        actor=cancelled_by or "business_user",
+    )
+    return order

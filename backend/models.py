@@ -210,7 +210,7 @@ class AgentAction(Base):
 
     action_type = Column(String, nullable=False)
     # replenishment_analysis | supplier_recommendation | draft_created |
-    # approved | rejected | order_created | error
+    # approved | rejected | cancelled | order_created | error
 
     status = Column(String, nullable=False)  # success | failed | skipped
     message = Column(Text, nullable=True)
