@@ -56,14 +56,17 @@ const statusStyle = {
 
 export default function SupplierDashboard({ user, onLogout }) {
   const [activeNav, setActiveNav] = useState("dashboard");
+  const supplierId = user?.supplier_id;
   const [requirements, setRequirements] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(Boolean(supplierId));
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
+    if (!supplierId) return undefined;
     let ignore = false;
     async function loadData() {
       try {
-        const response = await fetchJson("/business-pages/inventory");
+        const response = await fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/inventory`);
         if (!ignore && response?.items) {
           const mapped = response.items.map(item => ({
             product: item.name || item.id,
@@ -73,15 +76,15 @@ export default function SupplierDashboard({ user, onLogout }) {
           }));
           setRequirements(mapped);
         }
-      } catch {
-        /* keep default empty list on network error */
+      } catch (err) {
+        if (!ignore) setLoadError(err.message || "Could not load your products.");
       } finally {
         if (!ignore) setLoading(false);
       }
     }
     loadData();
     return () => { ignore = true; };
-  }, []);
+  }, [supplierId]);
 
 
   return (
@@ -165,8 +168,9 @@ export default function SupplierDashboard({ user, onLogout }) {
 
             {/* ── Business Requirements ── */}
             <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>My Business Requirements</div>
-              <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Summary and status of critical items</div>
+              <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Retailer Demand for Your Products</div>
+              <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Retailer stock of each product you supply · low and critical items are likely orders</div>
+              {loadError && <div style={{ fontSize: 13, color: "#b8543f", marginBottom: 12 }}>{loadError}</div>}
 
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -177,6 +181,13 @@ export default function SupplierDashboard({ user, onLogout }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {(loading || !requirements.length) && (
+                    <tr>
+                      <td colSpan={4} style={{ padding: "20px 8px", fontSize: 13, color: C.textDim, textAlign: "center" }}>
+                        {!supplierId ? "This account is not linked to a supplier ID." : loading ? "Loading your products…" : "No products are linked to your supplier ID yet."}
+                      </td>
+                    </tr>
+                  )}
                   {requirements.map((r) => {
                     const s = statusStyle[r.status];
                     return (
@@ -201,26 +212,15 @@ export default function SupplierDashboard({ user, onLogout }) {
           </div>
         )}
 
-        {activeNav === "inventory" && <SupplierInventoryPage />}
-        {activeNav === "sales" && <SalesPage />}
+        {activeNav === "inventory" && <SupplierInventoryPage user={user} />}
+        {activeNav === "sales" && <SalesPage user={user} />}
         {activeNav === "businessmarketplace" && <BusinessMarketplacePage />}
-        {activeNav === "analytics" && <SAnalyticsPage />}
+        {activeNav === "analytics" && <SAnalyticsPage user={user} />}
         {activeNav === "aiinsights" && <SAIInsightsPage user={user} />}
         {activeNav === "alerts" && <SAlertsPage user={user} />}
         {activeNav === "settings" && <SSettingsPage user={user} onLogout={onLogout} />}
 
         
-
-        {/* Placeholder for other pages */}
-        {activeNav !== "dashboard" && activeNav !== "inventory" && activeNav !== "sales" && activeNav !== "businessmarketplace" && activeNav !== "analytics" && activeNav !== "aiinsights" && activeNav !== "alerts" && activeNav !== "settings" &&(
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-            <div style={{ width: 64, height: 64, borderRadius: 12, background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, color: C.green, marginBottom: 20 }}>◎</div>
-            <div style={{ ...syne, fontSize: 22, fontWeight: 700, color: C.text }}>
-              {navItems.find(n => n.id === activeNav)?.label}
-            </div>
-            <div style={{ fontSize: 13, marginTop: 8, color: C.textDim }}>This page is coming soon</div>
-          </div>
-        )}
 
       </main>
     </div>

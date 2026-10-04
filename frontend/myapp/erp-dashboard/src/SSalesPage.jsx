@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, BarChart, Bar
 } from "recharts";
+import { fetchJson, formatCurrency } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -27,56 +28,24 @@ const C = {
 const syne = { fontFamily: "Syne, sans-serif" };
 const ibm  = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
-// Sample data for supplier accounts (supplier-level sales aren't tracked in the dataset yet).
-// Internally consistent: months sum to Total Revenue, Dec's weeks sum to Dec, the last week's days sum to its week.
-const allTimeData = [
-  { month: "Jan", actual: 318400, predicted: 309800 },
-  { month: "Feb", actual: 296750, predicted: 305200 },
-  { month: "Mar", actual: 342900, predicted: 336100 },
-  { month: "Apr", actual: 365200, predicted: 371900 },
-  { month: "May", actual: 351800, predicted: 360400 },
-  { month: "Jun", actual: 389600, predicted: 381200 },
-  { month: "Jul", actual: 402300, predicted: 410800 },
-  { month: "Aug", actual: 378900, predicted: 386500 },
-  { month: "Sep", actual: 415700, predicted: 408300 },
-  { month: "Oct", actual: 436200, predicted: 441700 },
-  { month: "Nov", actual: 458900, predicted: 452100 },
-  { month: "Dec", actual: 492300, predicted: 501600 },
-];
+const emptyState = {
+  headerNote: "Loading sales of your products…",
+  kpis: [],
+  allTimeData: [],
+  thisMonthData: [],
+  thisWeekData: [],
+  topProducts: [],
+  topProductsChart: [],
+};
 
-const thisMonthData = [
-  { month: "Week 1", actual: 118400, predicted: 115900 },
-  { month: "Week 2", actual: 121900, predicted: 124300 },
-  { month: "Week 3", actual: 124700, predicted: 122800 },
-  { month: "Week 4", actual: 127300, predicted: 130100 },
-];
+const kpiIcons = ["◈", "◎", "◉", "◌"];
 
-const thisWeekData = [
-  { month: "Mon", actual: 17200, predicted: 17600 },
-  { month: "Tue", actual: 18400, predicted: 18100 },
-  { month: "Wed", actual: 19100, predicted: 18800 },
-  { month: "Thu", actual: 18600, predicted: 19200 },
-  { month: "Fri", actual: 19800, predicted: 19400 },
-  { month: "Sat", actual: 17900, predicted: 18300 },
-  { month: "Sun", actual: 16300, predicted: 16900 },
-];
+function formatKpi(kpi) {
+  return kpi.label === "Total Orders" ? Number(kpi.value || 0).toLocaleString("en-IN") : formatCurrency(kpi.value);
+}
 
-const topProducts = [
-  { name: "Premium Rice 5kg", revenue: 1182400, units: 3942, trend: "up" },
-  { name: "Wireless Earbuds", revenue: 986300, units: 1318, trend: "up" },
-  { name: "Cotton T-Shirt", revenue: 874500, units: 2186, trend: "down" },
-  { name: "A4 Notebook Pack", revenue: 812600, units: 4063, trend: "up" },
-  { name: "Cooking Oil 1L", revenue: 793150, units: 2655, trend: "down" },
-];
-
-const topProductsChart = topProducts.map(({ name, revenue }) => ({ name, revenue }));
-
-const kpis = [
-  { label: "Total Revenue",    value: "₹ 46,48,950", sub: "Jan – Dec · sample data", icon: "◈", accent: true  },
-  { label: "Total Orders",     value: "2,514",       sub: "Orders fulfilled",        icon: "◎", accent: false },
-  { label: "Avg Order Value",  value: "₹ 1,849",     sub: "Revenue per order",       icon: "◉", accent: false },
-  { label: "Predicted (Next)", value: "₹ 5,08,400",  sub: "Next month forecast",     icon: "◌", accent: false },
-];
+const trendLabel = { up: "▲ Up vs previous 30 days", down: "▼ Down vs previous 30 days", flat: "→ Flat vs previous 30 days" };
+const trendColor = { up: "#4a7a49", down: "#c83030", flat: "#9aaa9a" };
 
 const filters = ["All Time", "This Month", "This Week"];
 
@@ -89,7 +58,7 @@ const CustomTooltip = ({ active, payload, label }) => {
           <div key={p.dataKey} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.color, display: "inline-block" }}></span>
             <span style={{ fontSize: 13, color: C.textMuted }}>{p.dataKey === "actual" ? "Actual" : "Predicted"}:</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>₹{p.value.toLocaleString()}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{formatCurrency(p.value)}</span>
           </div>
         ))}
       </div>
@@ -103,23 +72,38 @@ const BarTooltip = ({ active, payload, label }) => {
     return (
       <div style={{ ...ibm, background: "#fff", border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: "12px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}>
         <p style={{ fontWeight: 700, color: C.text, fontSize: 13, marginBottom: 4 }}>{label}</p>
-        <p style={{ fontSize: 13, color: C.textMuted }}>Revenue: <span style={{ fontWeight: 700, color: C.green }}>₹{payload[0].value.toLocaleString()}</span></p>
+        <p style={{ fontSize: 13, color: C.textMuted }}>Revenue: <span style={{ fontWeight: 700, color: C.green }}>{formatCurrency(payload[0].value)}</span></p>
       </div>
     );
   }
   return null;
 };
 
-export default function SSalesPage() {
+export default function SSalesPage({ user }) {
+  const supplierId = user?.supplier_id;
   const [filter,         setFilter]         = useState("All Time");
   const [hoveredKpi,     setHoveredKpi]     = useState(null);
   const [hoveredProduct, setHoveredProduct] = useState(null);
+  const [data,           setData]           = useState(emptyState);
+  const [error,          setError]          = useState("");
+
+  useEffect(() => {
+    if (!supplierId) return undefined;
+    let ignore = false;
+    fetchJson(`/suppliers/${encodeURIComponent(supplierId)}/sales`)
+      .then((response) => { if (!ignore) { setData(response); setError(""); } })
+      .catch((err) => { if (!ignore) setError(err.message || "Could not load sales data."); });
+    return () => { ignore = true; };
+  }, [supplierId]);
 
   const chartData = filter === "All Time"
-    ? allTimeData
+    ? data.allTimeData
     : filter === "This Month"
-      ? thisMonthData
-      : thisWeekData;
+      ? data.thisMonthData
+      : data.thisWeekData;
+  const topProducts = data.topProducts;
+  const topProductsChart = data.topProductsChart;
+  const kpis = data.kpis.map((kpi, i) => ({ ...kpi, value: formatKpi(kpi), icon: kpiIcons[i], accent: i === 0 }));
 
   return (
     <div style={{ ...ibm }}>
@@ -131,7 +115,7 @@ export default function SSalesPage() {
             <div style={{ width: 3, height: 28, background: C.green, borderRadius: 2 }}></div>
             <h1 style={{ ...syne, margin: 0, fontSize: 26, fontWeight: 800, color: C.text, letterSpacing: "0.5px" }}>Sales</h1>
           </div>
-          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>Overview, predictions & top products · Sample data</p>
+          <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>{supplierId ? data.headerNote : "This account is not linked to a supplier ID"}</p>
         </div>
         <div style={{ display: "flex", background: "#eee8e0", borderRadius: 10, padding: 4, gap: 2 }}>
           {filters.map(f => (
@@ -148,6 +132,12 @@ export default function SSalesPage() {
           ))}
         </div>
       </div>
+
+      {error && (
+        <div style={{ marginBottom: 18, padding: "12px 14px", background: "#fdf0f0", border: "1px solid #f0c8c0", borderRadius: 10, color: "#b8543f", fontSize: 13 }}>
+          {error}
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
@@ -208,7 +198,7 @@ export default function SSalesPage() {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
             <XAxis dataKey="month" tick={{ fontSize: 12, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v}`} />
+            <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={(v) => formatCurrency(v)} />
             <Tooltip content={<CustomTooltip />} cursor={{ stroke: C.greenBorder, strokeWidth: 1, strokeDasharray: "4 4" }} />
             <Area type="monotone" dataKey="actual" stroke={C.green} strokeWidth={2.5} fill="url(#gradActualSupplier)"
               dot={{ r: 4, fill: C.green, strokeWidth: 0 }}
@@ -226,7 +216,7 @@ export default function SSalesPage() {
         {/* Product list */}
         <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Top Selling Products</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Ranked by revenue · {filter} · Hover for details</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Your products ranked by all-time revenue</div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {topProducts.map((p, i) => (
@@ -250,9 +240,9 @@ export default function SSalesPage() {
                   </div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>₹{p.revenue.toLocaleString("en-IN")}</div>
-                  <div style={{ fontSize: 11, color: p.trend === "up" ? C.green : "#c83030", marginTop: 8, fontWeight: 500 }}>
-                    {p.trend === "up" ? "▲ Trending up" : "▼ Trending down"}
+                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{formatCurrency(p.revenue)}</div>
+                  <div style={{ fontSize: 11, color: trendColor[p.trend] || C.textDim, marginTop: 8, fontWeight: 500 }}>
+                    {trendLabel[p.trend] || ""}
                   </div>
                 </div>
               </div>
@@ -263,12 +253,12 @@ export default function SSalesPage() {
         {/* Revenue by Product */}
         <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
           <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Revenue by Product</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Hover over bars for details · {filter}</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>All-time revenue · hover over bars for details</div>
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={topProductsChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={32}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={v => `₹${v}`} />
+              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={(v) => formatCurrency(v)} />
               <Tooltip content={<BarTooltip />} cursor={{ fill: C.greenSubtle }} />
               <Bar dataKey="revenue" fill={C.green} radius={[6, 6, 0, 0]}
                 onMouseEnter={(_, i) => setHoveredProduct(i)}

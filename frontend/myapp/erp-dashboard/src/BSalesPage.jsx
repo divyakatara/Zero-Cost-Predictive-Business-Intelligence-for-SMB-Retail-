@@ -219,8 +219,8 @@ export default function SalesPage() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{formatCurrency(product.revenue)}</div>
-                  <div style={{ fontSize: 11, color: product.trend === "up" ? C.green : "#c83030", marginTop: 1, fontWeight: 500 }}>
-                    {product.trend === "up" ? "Uptrend" : "Watch"}
+                  <div style={{ fontSize: 11, color: product.trend === "up" ? C.green : product.trend === "down" ? "#c83030" : C.textDim, marginTop: 1, fontWeight: 500 }}>
+                    {product.trend === "up" ? "▲ Up vs prev. 30 days" : product.trend === "down" ? "▼ Down vs prev. 30 days" : "→ Flat"}
                   </div>
                 </div>
               </div>
