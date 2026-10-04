@@ -235,6 +235,84 @@ def supplier_analytics(
     }
 
 
+def _business_card(business: models.Business) -> dict:
+    location = ", ".join(part for part in [business.city, business.state] if part)
+    return {
+        "id": business.id,
+        "name": business.name,
+        "category": business.category,
+        "type": business.business_type,
+        "location": location,
+        "description": business.description,
+        "email": business.email,
+        "phone": business.phone,
+        "website": business.website,
+    }
+
+
+@router.get("/{supplier_code}/marketplace")
+def supplier_marketplace(supplier_code: str, db: Session = Depends(get_db), current_user: dict = Depends(get_current_user)):
+    """Approved businesses on the platform, split into this supplier's clients
+    (businesses whose procurement agent placed an order with it) and the rest.
+
+    Orders are attributed by PurchaseOrder.requested_by, which the procurement
+    page fills with the business's email, until orders carry a business_id.
+    """
+    supplier = get_own_supplier(db, supplier_code, current_user)
+    businesses = (
+        db.query(models.Business)
+        .filter(models.Business.status == "approved")
+        .order_by(models.Business.name.asc())
+        .all()
+    )
+    orders = (
+        db.query(models.PurchaseOrder)
+        .filter(models.PurchaseOrder.supplier_id == supplier.id)
+        .filter(models.PurchaseOrder.status.in_(["created", "awaiting_approval"]))
+        .order_by(models.PurchaseOrder.created_at.desc())
+        .all()
+    )
+    orders_by_identity = defaultdict(list)
+    for order in orders:
+        orders_by_identity[(order.requested_by or "").strip().lower()].append(order)
+
+    clients, others = [], []
+    for business in businesses:
+        identities = {(business.email or "").lower(), (business.owner.email if business.owner else "").lower()} - {""}
+        business_orders = [order for identity in identities for order in orders_by_identity.get(identity, [])]
+        card = _business_card(business)
+        if not business_orders:
+            others.append(card)
+            continue
+        placed = [order for order in business_orders if order.status == "created"]
+        card.update({
+            "ordersPlaced": len(placed),
+            "ordersAwaiting": len(business_orders) - len(placed),
+            "unitsOrdered": sum(order.quantity or 0 for order in placed),
+            "firstOrder": min(order.created_at for order in business_orders).date().isoformat(),
+            "lastOrder": max(order.created_at for order in business_orders).date().isoformat(),
+            "orders": [
+                {
+                    "id": order.id,
+                    "product": order.product_code or order.product_name,
+                    "quantity": order.quantity,
+                    "status": order.status,
+                    "date": order.created_at.date().isoformat(),
+                }
+                for order in sorted(business_orders, key=lambda order: order.created_at, reverse=True)
+            ],
+        })
+        clients.append(card)
+
+    clients.sort(key=lambda card: (-card["ordersPlaced"], card["name"]))
+    return {
+        "headerNote": f"{len(clients)} client(s) and {len(others)} other approved business(es) on Smart ERP",
+        "clients": clients,
+        "otherBusinesses": others,
+        "categories": ["All"] + sorted({card["category"] for card in others if card["category"]}),
+    }
+
+
 @router.get("/{supplier_code}/insights")
 def supplier_insights(supplier_code: str, db: Session = Depends(get_db)):
     """Insights for one supplier, built only from that supplier's own records:
