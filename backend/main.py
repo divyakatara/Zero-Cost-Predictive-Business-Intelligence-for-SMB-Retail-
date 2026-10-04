@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 
 from csv_loader import load_csv_tables, verify_loaded_data
 import models
@@ -23,12 +26,15 @@ from routes import (
     supplier,
 )
 
-# Create database tables when the app starts.
-models.Base.metadata.create_all(bind=engine)
+# ── Schema ───────────────────────────────────────────────────────────────────
+# Alembic owns the schema (backend/migrations). To change it: edit models.py,
+# then `alembic revision --autogenerate -m "..."` from backend/. The functions
+# below are FROZEN: they only bring a database created before Alembic up to
+# the baseline revision. Never add schema changes to them.
 
 
 def run_simple_migrations():
-    """Add new columns to existing tables without using a migration tool yet."""
+    """Frozen legacy step: columns added before Alembic existed."""
     with engine.begin() as connection:
         connection.execute(
             text("ALTER TABLE users ADD COLUMN IF NOT EXISTS gstin VARCHAR")
@@ -289,11 +295,15 @@ def run_simple_migrations():
         )
 
 
-# Keep the existing database updated with small schema changes.
-run_simple_migrations()
+def _legacy_business_and_tenancy_sql():
+    """Frozen legacy step: businesses table, GST file and multi-tenancy columns."""
+    _legacy_businesses_table()
+    _legacy_multi_tenancy()
 
-with engine.begin() as connection:
-            connection.execute(
+
+def _legacy_businesses_table():
+    with engine.begin() as connection:
+        connection.execute(
             text(
                 """
                 CREATE TABLE IF NOT EXISTS businesses (
@@ -326,36 +336,59 @@ with engine.begin() as connection:
                 """
             )
         )
-            connection.execute(
-                text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_type VARCHAR")
-            )
-            connection.execute(
-                text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_data BYTEA")
-            )
+        connection.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_type VARCHAR"))
+        connection.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS gst_certificate_data BYTEA"))
 
-# Multi-tenancy (TASK-12): every business-owned table gets a business_id.
-with engine.begin() as connection:
-    connection.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE"))
-    connection.execute(text("ALTER TABLE businesses ALTER COLUMN status SET DEFAULT 'pending'"))
-    for table, on_delete in (
-        ("products", "CASCADE"),
-        ("retail_sales", "CASCADE"),
-        ("inventory", "CASCADE"),
-        ("purchase_orders", "CASCADE"),
-        ("agent_actions", "CASCADE"),
-        ("suppliers", "SET NULL"),
-    ):
+
+def _legacy_multi_tenancy():
+    # Multi-tenancy (TASK-12): every business-owned table gets a business_id.
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE businesses ADD COLUMN IF NOT EXISTS is_demo BOOLEAN NOT NULL DEFAULT FALSE"))
+        connection.execute(text("ALTER TABLE businesses ALTER COLUMN status SET DEFAULT 'pending'"))
+        for table, on_delete in (
+            ("products", "CASCADE"),
+            ("retail_sales", "CASCADE"),
+            ("inventory", "CASCADE"),
+            ("purchase_orders", "CASCADE"),
+            ("agent_actions", "CASCADE"),
+            ("suppliers", "SET NULL"),
+        ):
+            connection.execute(text(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS business_id INTEGER "
+                f"REFERENCES businesses(id) ON DELETE {on_delete}"
+            ))
+            connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table}_business_id ON {table} (business_id)"))
+        # product_code is unique per business, not globally.
+        connection.execute(text("DROP INDEX IF EXISTS ix_products_product_code"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_products_product_code ON products (product_code)"))
         connection.execute(text(
-            f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS business_id INTEGER "
-            f"REFERENCES businesses(id) ON DELETE {on_delete}"
+            "CREATE UNIQUE INDEX IF NOT EXISTS ux_products_business_product_code ON products (business_id, product_code)"
         ))
-        connection.execute(text(f"CREATE INDEX IF NOT EXISTS ix_{table}_business_id ON {table} (business_id)"))
-    # product_code is unique per business, not globally.
-    connection.execute(text("DROP INDEX IF EXISTS ix_products_product_code"))
-    connection.execute(text("CREATE INDEX IF NOT EXISTS ix_products_product_code ON products (product_code)"))
-    connection.execute(text(
-        "CREATE UNIQUE INDEX IF NOT EXISTS ux_products_business_product_code ON products (business_id, product_code)"
-    ))
+
+
+def upgrade_legacy_database_to_baseline():
+    """Bring a database created before Alembic to revision 0001."""
+    models.Base.metadata.create_all(bind=engine)  # only creates missing tables
+    run_simple_migrations()
+    _legacy_business_and_tenancy_sql()
+
+
+BACKEND_DIR = Path(__file__).resolve().parent
+
+
+def migrate_database():
+    config = Config(str(BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(BACKEND_DIR / "migrations"))
+    config.attributes["configure_logger"] = False
+    inspector = inspect(engine)
+    if inspector.has_table("users") and not inspector.has_table("alembic_version"):
+        print("Pre-Alembic database found: upgrading it to the baseline revision.", flush=True)
+        upgrade_legacy_database_to_baseline()
+        command.stamp(config, "0001")
+    command.upgrade(config, "head")
+
+
+migrate_database()
 
 
 def backfill_demo_business():
