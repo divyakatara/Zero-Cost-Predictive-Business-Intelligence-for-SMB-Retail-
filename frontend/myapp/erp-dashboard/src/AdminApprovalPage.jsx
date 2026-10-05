@@ -378,7 +378,7 @@ export default function AdminApprovalPage({ onLogout }) {
                             background: C.green, color: "#fff", border: "none", borderRadius: 8,
                             padding: "9px 22px", fontSize: 12, fontWeight: 600, cursor: "pointer",
                             boxShadow: "0 2px 8px rgba(74,122,73,0.2)",
-                          }}>Approve & Activate Business</button>
+                          }}>{busyId === b.id ? "Approving…" : "Approve & Activate Business"}</button>
                         </>
                       )}
                     </>
@@ -395,7 +395,7 @@ export default function AdminApprovalPage({ onLogout }) {
                     <button disabled={busyId === b.id} onClick={() => handleApprove(b.id)} style={{ opacity: busyId === b.id ? 0.6 : 1,
                       background: C.green, color: "#fff", border: "none", borderRadius: 8,
                       padding: "7px 14px", fontSize: 11, fontWeight: 600, cursor: "pointer",
-                    }}>Re-Approve Business</button>
+                    }}>{busyId === b.id ? "Approving…" : "Re-Approve Business"}</button>
                   )}
                 </div>
               </div>

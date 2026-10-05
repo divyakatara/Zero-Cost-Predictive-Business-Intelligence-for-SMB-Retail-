@@ -3,7 +3,6 @@ import {
   Area,
   AreaChart,
   Bar,
-  BarChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -36,7 +35,6 @@ const emptyState = {
   thisMonthData: [],
   thisWeekData: [],
   topProducts: [],
-  topProductsChart: [],
 };
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -51,20 +49,6 @@ const CustomTooltip = ({ active, payload, label }) => {
             <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{formatCurrency(item.value)}</span>
           </div>
         ))}
-      </div>
-    );
-  }
-  return null;
-};
-
-const BarTooltip = ({ active, payload, label }) => {
-  if (active && payload && payload.length) {
-    return (
-      <div style={{ ...ibm, background: "#fff", border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: "12px 16px", boxShadow: "0 4px 16px rgba(0,0,0,0.08)" }}>
-        <p style={{ fontWeight: 700, color: C.text, fontSize: 13, marginBottom: 4 }}>{label}</p>
-        <p style={{ fontSize: 13, color: C.textMuted }}>
-          Revenue: <span style={{ fontWeight: 700, color: C.green }}>{formatCurrency(payload[0].value)}</span>
-        </p>
       </div>
     );
   }
@@ -201,45 +185,31 @@ export default function SalesPage() {
         </ResponsiveContainer>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-        <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Top Selling Products</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Ranked by all-time revenue</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            {(data.topProducts || []).map((product, index) => (
-              <div key={product.name} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 14px", borderRadius: 10, background: C.greenSubtle, border: `1px solid ${C.greenBorder}` }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ width: 28, height: 28, borderRadius: 8, background: C.green, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>
-                    {index + 1}
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{product.name}</div>
-                    <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{product.units} units sold</div>
-                  </div>
+      <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
+        <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Top Selling Products</div>
+        <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>Ranked by all-time revenue · bar shows revenue relative to the top product</div>
+        <div style={{ display: "grid", gap: 8 }}>
+          {(data.topProducts || []).map((product, index) => {
+            const share = data.topProducts[0]?.revenue ? (product.revenue / data.topProducts[0].revenue) * 100 : 0;
+            return (
+              <div key={product.name} style={{ display: "grid", gridTemplateColumns: "28px 140px 1fr 140px 170px", alignItems: "center", gap: 14, padding: "10px 14px", borderRadius: 10, background: C.greenSubtle, border: `1px solid ${C.greenBorder}` }}>
+                <div style={{ width: 28, height: 28, borderRadius: 8, background: C.green, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: "#fff" }}>
+                  {index + 1}
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{formatCurrency(product.revenue)}</div>
-                  <div style={{ fontSize: 11, color: product.trend === "up" ? C.green : product.trend === "down" ? "#c83030" : C.textDim, marginTop: 1, fontWeight: 500 }}>
-                    {product.trend === "up" ? "▲ Up vs prev. 30 days" : product.trend === "down" ? "▼ Down vs prev. 30 days" : "→ Flat"}
-                  </div>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{product.name}</div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 1 }}>{product.units.toLocaleString("en-IN")} units sold</div>
+                </div>
+                <div style={{ height: 8, background: "#fff", borderRadius: 99, overflow: "hidden" }}>
+                  <div style={{ width: `${share}%`, height: "100%", background: C.green, borderRadius: 99 }} />
+                </div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.text, textAlign: "right" }}>{formatCurrency(product.revenue)}</div>
+                <div style={{ fontSize: 11, color: product.trend === "up" ? C.green : product.trend === "down" ? "#c83030" : C.textDim, fontWeight: 500, textAlign: "right" }}>
+                  {product.trend === "up" ? "▲ Up vs prev. 30 days" : product.trend === "down" ? "▼ Down vs prev. 30 days" : "→ Flat"}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ background: C.card, borderRadius: 14, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15, marginBottom: 4 }}>Revenue by Product</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginBottom: 20 }}>All-time revenue · hover over bars for details</div>
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart data={data.topProductsChart} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={32}>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={(value) => formatCurrency(value)} />
-              <Tooltip content={<BarTooltip />} cursor={{ fill: C.greenSubtle }} />
-              <Bar dataKey="revenue" fill={C.green} radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+            );
+          })}
         </div>
       </div>
     </div>

@@ -91,9 +91,6 @@ export default function InventoryPage({ onReorder } = {}) {
           </div>
           <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>{data.headerNote}</p>
         </div>
-        <div style={{ padding: "8px 16px", background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 8, fontSize: 12, color: C.green, fontWeight: 600, letterSpacing: "0.5px" }}>
-          Live Feed
-        </div>
       </div>
 
       {error && (
@@ -139,7 +136,7 @@ export default function InventoryPage({ onReorder } = {}) {
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: C.greenSubtle, borderBottom: `1px solid ${C.border}` }}>
-              {["SKU", "Product", "Category", "Stock Level", "Reorder Level", "Status", "Demand Forecast (AI)", "Supplier", "Action"].map((heading) => (
+              {["Product", "Category", "Stock Level", "Reorder Level", "Status", "Demand Forecast (AI)", "Supplier", "Action"].map((heading) => (
                 <th key={heading} style={{ textAlign: "left", padding: "12px 20px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>
                   {heading}
                 </th>
@@ -152,7 +149,6 @@ export default function InventoryPage({ onReorder } = {}) {
               const progress = item.reorder > 0 ? Math.min(100, Math.round((item.qty / item.reorder) * 100)) : 100;
               return (
                 <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
-                  <td style={{ padding: "14px 20px", fontSize: 12, color: C.textDim, fontFamily: "monospace" }}>{item.id}</td>
                   <td style={{ padding: "14px 20px", fontWeight: 600, fontSize: 13, color: C.text }}>{item.name}</td>
                   <td style={{ padding: "14px 20px" }}>
                     <span style={{ background: C.greenSubtle, color: C.textMuted, borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 500, border: `1px solid ${C.greenBorder}` }}>

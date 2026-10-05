@@ -28,23 +28,24 @@ export default function BAlertsPage() {
   const [summary, setSummary] = useState(null);
   const [anomalies, setAnomalies] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [retraining, setRetraining] = useState(false);
   const [error, setError] = useState("");
 
   const loadData = async (refresh = false) => {
     setLoading(true);
+    setRetraining(refresh);
     setError("");
     try {
-      const refreshQuery = refresh ? "?refresh=true" : "";
-      const [sumRes, anoRes] = await Promise.all([
-        fetchJson(`/anomaly/summary${refreshQuery}`),
-        fetchJson(`/anomaly/anomalies?limit=200${refresh ? "&refresh=true" : ""}`),
-      ]);
+      // Retrain once (via the summary call), then read the fresh results.
+      const sumRes = await fetchJson(`/anomaly/summary${refresh ? "?refresh=true" : ""}`);
+      const anoRes = await fetchJson("/anomaly/anomalies?limit=200");
       setSummary(sumRes);
       setAnomalies(anoRes.results || []);
     } catch (err) {
       setError(err.message || "Failed to load anomaly detection data from Isolation Forest model.");
     } finally {
       setLoading(false);
+      setRetraining(false);
     }
   };
 
@@ -120,7 +121,7 @@ export default function BAlertsPage() {
               gap: 6,
             }}
           >
-            {loading ? "Re-scoring..." : "Retrain & Refresh ML Model"}
+            {retraining ? "Retraining…" : loading ? "Loading…" : "Retrain & Refresh ML Model"}
           </button>
         </div>
       </div>

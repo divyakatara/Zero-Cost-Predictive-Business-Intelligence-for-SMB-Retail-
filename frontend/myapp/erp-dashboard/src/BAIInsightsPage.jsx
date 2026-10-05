@@ -21,11 +21,18 @@ const emptyState = {
   headerNote: "Smart suggestions to improve sales and business performance · Waiting for backend data",
   kpis: [],
   primarySuggestions: [],
-  recommendationCards: [],
-  suggestionTable: [],
 };
 
-export default function BAIInsightsPage() {
+const PRIORITY = {
+  High: { bg: "#fdf0f0", color: "#8a2020", border: "#f0c8c0" },
+  Medium: { bg: "#fdf8e8", color: "#8a7020", border: "#ecdca2" },
+  Low: { bg: "#ffffff", color: "#4a7a49", border: "#c8d8c7" },
+};
+
+// Where each suggestion's "Open" button goes.
+const TARGET = { Inventory: "Procurement AI", Sales: "Sales", Supplier: "Supplier Marketplace" };
+
+export default function BAIInsightsPage({ onNavigate }) {
   const [data, setData] = useState(emptyState);
   const [error, setError] = useState("");
 
@@ -71,7 +78,7 @@ export default function BAIInsightsPage() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 24 }}>
         {(data.kpis || []).map((kpi, index) => (
           <div key={kpi.label} style={{ background: index === 0 ? C.green : C.card, borderRadius: 12, padding: "22px 24px", border: index === 0 ? "none" : `1px solid ${C.border}`, boxShadow: index === 0 ? "0 4px 16px rgba(74,122,73,0.2)" : "0 1px 4px rgba(0,0,0,0.04)", position: "relative", overflow: "hidden" }}>
             {index === 0 && <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />}
@@ -85,84 +92,39 @@ export default function BAIInsightsPage() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 18, marginBottom: 24 }}>
-        <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Top AI Suggestions</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recommended actions based on your current stock, sales and suppliers</div>
-          </div>
-          <div style={{ display: "grid", gap: 12 }}>
-            {(data.primarySuggestions || []).map((item) => (
-              <div key={item.title} style={{ background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: "16px 18px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                  <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.title}</div>
-                    <div style={{ fontSize: 11, color: C.textDim, marginTop: 2 }}>{item.subtitle}</div>
-                  </div>
-                  <span style={{ background: "#fff", color: C.green, border: `1px solid ${C.greenBorder}`, borderRadius: 20, padding: "3px 10px", fontSize: 10, fontWeight: 700 }}>
-                    {item.priority}
-                  </span>
-                </div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                  <div style={{ fontSize: 12, color: C.textMuted }}>
-                    Expected Impact: <span style={{ fontWeight: 700, color: C.text }}>{item.impact}</span>
-                  </div>
-                  <div style={{ fontSize: 12, color: C.textMuted }}>
-                    Action: <span style={{ fontWeight: 700, color: C.text }}>{item.action}</span>
-                  </div>
-                </div>
-                <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>{item.reason}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.green, fontSize: 15 }}>Opportunity Summary</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>What the business can improve next</div>
-          </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {(data.recommendationCards || []).map((card) => (
-              <div key={card.title} style={{ background: "#fff", borderRadius: 10, padding: "14px 16px", border: `1px solid ${C.greenBorder}` }}>
-                <div style={{ fontSize: 12, color: C.textDim, marginBottom: 6 }}>{card.title}</div>
-                <div style={{ ...syne, fontSize: 24, fontWeight: 700, color: C.green, lineHeight: 1 }}>{card.value}</div>
-                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{card.note}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ marginBottom: 18 }}>
-          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Suggestion Breakdown</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Area-wise recommendation summary · Live database data</div>
+          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Top AI Suggestions</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recommended actions based on your current stock, sales and suppliers</div>
         </div>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead>
-            <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {["Area", "Suggestion", "Confidence", "Status"].map((heading) => (
-                <th key={heading} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>{heading}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {(data.suggestionTable || []).map((row) => (
-              <tr key={row.area} style={{ borderBottom: `1px solid ${C.border}` }}>
-                <td style={{ padding: "14px 12px", fontSize: 13, fontWeight: 600, color: C.text }}>{row.area}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.suggestion}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.confidence}</td>
-                <td style={{ padding: "14px 12px" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.greenSubtle, color: C.green, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: `1px solid ${C.greenBorder}` }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />
-                    {row.status}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div style={{ display: "grid", gap: 12 }}>
+          {(data.primarySuggestions || []).map((item) => {
+            const tone = PRIORITY[item.priority] || PRIORITY.Low;
+            const target = TARGET[item.subtitle];
+            return (
+              <div key={item.subtitle} style={{ background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 10, padding: "16px 18px", display: "grid", gridTemplateColumns: "1fr auto", gap: 16, alignItems: "center" }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+                    <span style={{ fontSize: 11, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600 }}>{item.subtitle}</span>
+                    <span style={{ background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`, borderRadius: 20, padding: "2px 10px", fontSize: 10, fontWeight: 700 }}>{item.priority} priority</span>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{item.title}</div>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
+                    <span style={{ fontWeight: 600, color: C.text }}>{item.impact}</span> · {item.reason}
+                  </div>
+                </div>
+                {target && onNavigate && item.priority !== "Low" && (
+                  <button
+                    onClick={() => onNavigate(target)}
+                    style={{ padding: "8px 14px", background: "#fff", color: C.green, border: `1px solid ${C.greenBorder}`, borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", fontFamily: "'IBM Plex Sans', sans-serif" }}
+                  >
+                    {item.action} →
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

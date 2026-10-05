@@ -37,8 +37,6 @@ const emptyState = {
   kpis: [],
   categoryData: [],
   demandData: [],
-  accuracyData: [],
-  matrixData: [],
   supplierData: [],
 };
 
@@ -57,6 +55,14 @@ const CustomTooltip = ({ active, payload, label }) => {
   }
   return null;
 };
+
+// 1250000 -> "₹12.5L" so the revenue axes stay readable.
+function compactRupees(value) {
+  if (value >= 1e7) return `₹${(value / 1e7).toFixed(1)}Cr`;
+  if (value >= 1e5) return `₹${(value / 1e5).toFixed(1)}L`;
+  if (value >= 1e3) return `₹${(value / 1e3).toFixed(0)}k`;
+  return `₹${value}`;
+}
 
 export default function BAnalyticsPage() {
   const [filter, setFilter] = useState("All Time");
@@ -152,7 +158,7 @@ export default function BAnalyticsPage() {
             <BarChart data={data.categoryData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={30}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={compactRupees} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" fill={C.green} radius={[6, 6, 0, 0]} />
             </BarChart>
@@ -168,7 +174,7 @@ export default function BAnalyticsPage() {
             <BarChart data={data.demandData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }} barSize={24}>
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} tickFormatter={compactRupees} />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="value" fill={C.green} radius={[6, 6, 0, 0]} />
             </BarChart>
@@ -176,59 +182,15 @@ export default function BAnalyticsPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 24 }}>
-        <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Forecast Accuracy</div>
-            <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Predicted vs Actual · {data.periodLabel || filter}</div>
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={data.accuracyData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="gradAccuracyLive" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={C.green} stopOpacity={0.2} />
-                  <stop offset="95%" stopColor={C.green} stopOpacity={0.01} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 11, fill: C.textDim, fontFamily: "IBM Plex Sans" }} axisLine={false} tickLine={false} />
-              <Tooltip content={<CustomTooltip />} />
-              <Area type="monotone" dataKey="actual" stroke={C.green} strokeWidth={2.5} fill="url(#gradAccuracyLive)" dot={{ r: 4, fill: C.green, strokeWidth: 0 }} />
-              <Line type="monotone" dataKey="predicted" stroke={C.green} strokeWidth={2} strokeDasharray="5 4" dot={{ r: 3, fill: C.green, strokeWidth: 0 }} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div style={{ background: C.cardGreen, borderRadius: 12, padding: "24px", border: `1px solid ${C.greenBorder}`, boxShadow: "0 1px 4px rgba(74,122,73,0.08)" }}>
-          <div style={{ marginBottom: 16 }}>
-            <div style={{ ...syne, fontWeight: 700, color: C.green, fontSize: 15 }}>Product Matrix</div>
-            <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4 }}>Movement & margin summary</div>
-          </div>
-          <div style={{ display: "grid", gap: 10 }}>
-            {(data.matrixData || []).map((item) => (
-              <div key={item.name} style={{ background: "#fff", borderRadius: 10, padding: "14px", border: `1px solid ${C.greenBorder}` }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.name}</div>
-                  <span style={{ background: C.greenSubtle, color: C.green, borderRadius: 20, padding: "3px 9px", fontSize: 10, fontWeight: 700 }}>{item.margin}</span>
-                </div>
-                <div style={{ fontSize: 11, color: C.textDim, marginBottom: 8 }}>{item.velocity}</div>
-                <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.6 }}>{item.note}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
       <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ marginBottom: 18 }}>
           <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>Supplier Scorecard</div>
-          <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Reliability and efficiency summary · Live database data</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>Recorded delivery, quality and reliability · ranked by weighted score</div>
         </div>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              {["Supplier", "Category", "Fill Rate", "On-Time", "Variance", "Signal"].map((heading) => (
+              {["Rank", "Supplier", "Location", "On-Time", "Quality", "Reliability", "Lead Time", "Score", "Signal"].map((heading) => (
                 <th key={heading} style={{ textAlign: "left", padding: "10px 12px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>{heading}</th>
               ))}
             </tr>
@@ -236,14 +198,17 @@ export default function BAnalyticsPage() {
           <tbody>
             {(data.supplierData || []).map((row) => (
               <tr key={row.name} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.rank ? `#${row.rank}` : "-"}</td>
                 <td style={{ padding: "14px 12px", fontSize: 13, fontWeight: 600, color: C.text }}>{row.name}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.category}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.fillRate}</td>
+                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.location}</td>
                 <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.onTime}</td>
-                <td style={{ padding: "14px 12px", fontSize: 12, color: C.textMuted }}>{row.variance}</td>
+                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.quality}</td>
+                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.reliability}</td>
+                <td style={{ padding: "14px 12px", fontSize: 12, color: C.text }}>{row.leadTime}</td>
+                <td style={{ padding: "14px 12px", fontSize: 12, fontWeight: 600, color: C.text }}>{row.score}</td>
                 <td style={{ padding: "14px 12px" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: C.greenSubtle, color: C.green, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: `1px solid ${C.greenBorder}` }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, display: "inline-block" }} />
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, background: row.signal === "Watch" ? "#fdf8e8" : C.greenSubtle, color: row.signal === "Watch" ? "#8a7020" : C.green, padding: "4px 10px", borderRadius: 20, fontSize: 11, fontWeight: 700, border: `1px solid ${row.signal === "Watch" ? "#ecdca2" : C.greenBorder}` }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: row.signal === "Watch" ? "#c8a030" : C.green, display: "inline-block" }} />
                     {row.signal}
                   </span>
                 </td>

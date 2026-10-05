@@ -18,7 +18,7 @@ import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
 import ProcurementAgentPage from "./BProcurementAgentPage";
 import ChatWidget from "./ChatWidget";
-import { apiFetch } from "./api";
+import { apiFetch, fetchJson } from "./api";
 
 const fontLink = document.createElement("link");
 fontLink.href =
@@ -88,13 +88,16 @@ function createEmptyOverview() {
     summary: {
       salesToday: 0,
       totalProfit: 0,
+      totalRevenue: 0,
       lowStockItems: 0,
       activeAlerts: 0,
     },
     monthlySales: emptySalesData,
     topProducts: emptyProductSalesData,
-    inventoryRows: [],
+    stockHealth: { Good: 0, Low: 0, Critical: 0 },
+    productCount: 0,
     reorderCandidates: [],
+    alerts: [],
     hasData: false,
   };
 }
@@ -142,6 +145,184 @@ function SalesShareDonut({ products }) {
   );
 }
 
+const cardStyle = {
+  background: C.card,
+  borderRadius: 12,
+  padding: "24px",
+  border: `1px solid ${C.border}`,
+  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
+};
+
+const linkButtonStyle = {
+  padding: "7px 16px",
+  background: C.greenSubtle,
+  color: C.green,
+  border: `1px solid ${C.borderGreen}`,
+  borderRadius: 6,
+  fontSize: 12,
+  fontWeight: 600,
+  cursor: "pointer",
+  fontFamily: "'IBM Plex Sans', sans-serif",
+  whiteSpace: "nowrap",
+};
+
+function CardHeader({ title, subtitle, action }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, gap: 12 }}>
+      <div>
+        <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>{title}</div>
+        {subtitle && <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{subtitle}</div>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+const healthColors = { Good: C.good.dot, Low: C.low.dot, Critical: C.critical.dot };
+
+// One stacked bar instead of a full stock table: the Inventory tab has the details.
+function StockHealthCard({ health, total, onOpen }) {
+  const order = ["Critical", "Low", "Good"];
+  return (
+    <div style={cardStyle}>
+      <CardHeader
+        title="Stock Health"
+        subtitle={`${total} products by stock against reorder level`}
+        action={<button style={linkButtonStyle} onClick={onOpen}>View inventory →</button>}
+      />
+      <div style={{ display: "flex", height: 14, borderRadius: 99, overflow: "hidden", background: C.border, marginBottom: 16 }}>
+        {order.map((key) => (health[key] ? (
+          <div key={key} title={`${key}: ${health[key]}`} style={{ width: `${(health[key] / Math.max(total, 1)) * 100}%`, background: healthColors[key] }} />
+        ) : null))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+        {order.map((key) => (
+          <div key={key} style={{ background: C[key.toLowerCase() === "good" ? "good" : key.toLowerCase()].bg, borderRadius: 8, padding: "10px 12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: healthColors[key] }} />
+              {key}
+            </div>
+            <div style={{ ...syne, fontSize: 22, fontWeight: 700, color: C.text, marginTop: 4 }}>{health[key] || 0}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ReorderCard({ candidates, onReview }) {
+  return (
+    <div style={{ ...cardStyle, background: C.cardGreen, border: `1px solid ${C.borderGreen}` }}>
+      <CardHeader
+        title="AI Reorder"
+        subtitle="From the Procurement AI's reorder analysis"
+        action={(
+          <span style={{ background: "#fff", color: C.green, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 4, border: `1px solid ${C.borderGreen}` }}>
+            {candidates.length ? `${candidates.length} TO REORDER` : "STABLE"}
+          </span>
+        )}
+      />
+      {candidates.length === 0 ? (
+        <div style={{ background: "#fff", borderRadius: 8, padding: "22px 16px", textAlign: "center", fontSize: 13, color: C.textMuted }}>
+          Every product is above its reorder level.
+        </div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {candidates.map((item) => {
+            const tone = C[item.status === "Critical" ? "critical" : "low"];
+            return (
+              <div key={item.productId} style={{ background: "#fff", borderRadius: 8, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.product}</span>
+                    <span style={{ background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>{item.status}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
+                    Stock {item.stock} · reorder level {item.reorder} · order <strong style={{ color: C.text }}>{item.recommendedQuantity}</strong> units
+                  </div>
+                </div>
+                <button style={linkButtonStyle} onClick={() => onReview(item.productId)}>Review →</button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const FEATURE_LABELS = {
+  quantity_sold: "Units sold", sales_amount: "Sales", total_cost: "Total cost", profit: "Profit",
+  promo: "Promotion", lag_7: "Units 7 days earlier", current_stock: "Stock", price: "Price",
+  cost_price: "Cost price", reorder_level: "Reorder level",
+};
+
+// "Most deviant dimensions: quantity_sold 130.00 vs avg 34.47 (+5.1 sd); ..." -> "Units sold 130 vs avg 34 (+5.1 sd)"
+function topDeviation(explanation) {
+  const first = (explanation || "").replace("Most deviant dimensions: ", "").split(";")[0].trim();
+  const match = first.match(/^(\w+) ([\d,.]+) vs avg ([\d,.]+) \(([^)]+)\)$/);
+  if (!match) return first;
+  const [, feature, value, avg, sd] = match;
+  const round = (n) => Math.round(Number(n.replace(/,/g, ""))).toLocaleString("en-IN");
+  return `${FEATURE_LABELS[feature] || feature} ${round(value)} vs avg ${round(avg)} (${sd})`;
+}
+
+const severityStyle = {
+  high: { bg: C.critical.bg, color: C.critical.color, label: "High" },
+  medium: { bg: C.low.bg, color: C.low.color, label: "Medium" },
+};
+
+function AlertsCard({ alerts, anomalies, onNavigate }) {
+  const total = alerts.length + (anomalies?.total || 0);
+  return (
+    <div style={cardStyle}>
+      <CardHeader
+        title="Anomaly & System Alerts"
+        subtitle="Stock and supplier checks, plus transactions flagged by the Isolation Forest model"
+        action={<button style={linkButtonStyle} onClick={() => onNavigate("Alerts")}>View all alerts →</button>}
+      />
+      {total === 0 && (
+        <div style={{ padding: "20px 0", textAlign: "center", fontSize: 13, color: C.textMuted }}>All clear: no active alerts.</div>
+      )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {alerts.map((alert) => {
+          const tone = severityStyle[alert.severity] || severityStyle.medium;
+          return (
+            <button
+              key={alert.title}
+              onClick={() => onNavigate(alert.target)}
+              style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", width: "100%", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif" }}
+            >
+              <span style={{ background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, flexShrink: 0 }}>{tone.label}</span>
+              <span style={{ flex: 1 }}>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text }}>{alert.title}</span>
+                <span style={{ display: "block", fontSize: 11, color: C.textDim, marginTop: 2 }}>{alert.detail}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {anomalies && (
+        <div style={{ marginTop: alerts.length ? 18 : 0 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 8 }}>
+            {anomalies.total} of {anomalies.rows.toLocaleString("en-IN")} transactions flagged as unusual · most unusual:
+          </div>
+          <div style={{ display: "grid", gap: 6 }}>
+            {anomalies.top.map((row) => (
+              <div key={row.transaction_id} style={{ display: "grid", gridTemplateColumns: "100px 100px 80px 1fr", gap: 10, alignItems: "baseline", fontSize: 12, padding: "8px 12px", background: C.greenSubtle, borderRadius: 6 }}>
+                <span style={{ fontFamily: "monospace", color: C.textMuted }}>{row.transaction_id}</span>
+                <span style={{ color: C.textMuted }}>{row.sale_date}</span>
+                <span style={{ fontWeight: 600, color: C.text }}>{row.product_id}</span>
+                <span style={{ color: C.textDim }}>{topDeviation(row.explanation)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 const CustomTooltip = ({ active, payload, label }) => {
   if (active && payload && payload.length) {
     return (
@@ -185,6 +366,22 @@ export default function ERPDashboard({ business, onLogout }) {
   const [overview, setOverview] = useState(createEmptyOverview);
   const [dashboardError, setDashboardError] = useState("");
   const [procurementFocusId, setProcurementFocusId] = useState(null);
+  const [anomalies, setAnomalies] = useState(null);
+
+  // Isolation Forest results load separately so the dashboard never waits on the model.
+  useEffect(() => {
+    if (activeNav !== "Dashboard") return undefined;
+    let ignore = false;
+    fetchJson("/anomaly/anomalies?limit=3")
+      .then((res) => { if (!ignore) setAnomalies({ total: res.total_anomalies, rows: res.total_rows, top: res.results }); })
+      .catch(() => { if (!ignore) setAnomalies(null); });
+    return () => { ignore = true; };
+  }, [activeNav]);
+
+  function openProcurementFor(productId) {
+    setProcurementFocusId(productId);
+    setActiveNav("Procurement AI");
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -236,7 +433,6 @@ export default function ERPDashboard({ business, onLogout }) {
     setActiveNav(label);
   }
 
-  const inventoryData = overview.inventoryRows || [];
   const topProducts = overview.topProducts?.length
     ? overview.topProducts
     : emptyProductSalesData;
@@ -464,20 +660,6 @@ export default function ERPDashboard({ business, onLogout }) {
                   : "Overview & summary · Live database data"}
               </p>
             </div>
-            <div
-              style={{
-                padding: "8px 16px",
-                background: C.greenSubtle,
-                border: `1px solid ${C.borderGreen}`,
-                borderRadius: 8,
-                fontSize: 12,
-                color: C.green,
-                fontWeight: 600,
-                letterSpacing: "0.5px",
-              }}
-            >
-              LIVE FEED
-            </div>
           </div>
         )}
 
@@ -606,12 +788,12 @@ export default function ERPDashboard({ business, onLogout }) {
                   accent: false,
                 },
                 {
-                  label: "Low Stock Items",
-                  value: `${overview.summary.lowStockItems} Items`,
+                  label: "Total Revenue",
+                  value: formatCurrency(overview.summary.totalRevenue),
                   sub: overview.hasData
-                    ? "Products at or near reorder level"
-                    : "Waiting for product import",
-                  icon: "!",
+                    ? "All recorded retail sales"
+                    : "Waiting for sales import",
+                  icon: "₹",
                   accent: false,
                 },
               ].map((kpi) => (
@@ -960,339 +1142,16 @@ export default function ERPDashboard({ business, onLogout }) {
               </div>
             </div>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1.1fr 1fr",
-                gap: 18,
-                marginBottom: 24,
-              }}
-            >
-              <div
-                style={{
-                  background: C.card,
-                  borderRadius: 12,
-                  padding: "24px",
-                  border: `1px solid ${C.border}`,
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-                }}
-              >
-                <div style={{ marginBottom: 18 }}>
-                  <div
-                    style={{
-                      ...syne,
-                      fontWeight: 700,
-                      color: C.text,
-                      fontSize: 15,
-                    }}
-                  >
-                    Inventory Status
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: C.textDim,
-                      marginTop: 4,
-                    }}
-                  >
-                    Real-time stock levels · {inventoryData.length} items
-                  </div>
-                </div>
-                <table
-                  style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}
-                >
-                  <thead>
-                    <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-                      {["Product", "Stock", "Reorder Lvl", "Status"].map((heading) => (
-                        <th
-                          key={heading}
-                          style={{
-                            textAlign: "left",
-                            padding: "7px 8px",
-                            color: C.textDim,
-                            fontWeight: 500,
-                            fontSize: 10,
-                            letterSpacing: "1.5px",
-                            textTransform: "uppercase",
-                          }}
-                        >
-                          {heading}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inventoryData.map((row) => {
-                      const status = C[row.status.toLowerCase()] || C.good;
-                      return (
-                        <tr key={row.product} style={{ borderBottom: `1px solid ${C.border}` }}>
-                          <td
-                            style={{
-                              padding: "11px 8px",
-                              fontWeight: 500,
-                              color: C.text,
-                            }}
-                          >
-                            {row.product}
-                          </td>
-                          <td style={{ padding: "11px 8px", color: C.textMuted }}>
-                            {row.stock} units
-                          </td>
-                          <td style={{ padding: "11px 8px", color: C.textMuted }}>
-                            {row.reorder}
-                          </td>
-                          <td style={{ padding: "11px 8px" }}>
-                            <span
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                gap: 5,
-                                background: status.bg,
-                                color: status.color,
-                                padding: "3px 10px",
-                                borderRadius: 4,
-                                fontSize: 11,
-                                fontWeight: 600,
-                                letterSpacing: "0.5px",
-                              }}
-                            >
-                              <span
-                                style={{
-                                  width: 5,
-                                  height: 5,
-                                  borderRadius: "50%",
-                                  background: status.dot,
-                                  display: "inline-block",
-                                }}
-                              />
-                              {row.status}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              <div
-                style={{
-                  background: C.cardGreen,
-                  borderRadius: 12,
-                  padding: "24px",
-                  border: `1px solid ${C.borderGreen}`,
-                  boxShadow: "0 1px 4px rgba(74,122,73,0.08)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "flex-start",
-                    marginBottom: 16,
-                  }}
-                >
-                  <div>
-                    <div
-                      style={{
-                        ...syne,
-                        fontWeight: 700,
-                        color: C.green,
-                        fontSize: 15,
-                      }}
-                    >
-                      AI Reorder
-                    </div>
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: C.textMuted,
-                        marginTop: 4,
-                      }}
-                    >
-                      Rule-based decision engine
-                    </div>
-                  </div>
-                  <span
-                    style={{
-                      background: "#fff",
-                      color: C.green,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      padding: "3px 10px",
-                      borderRadius: 4,
-                      border: `1px solid ${C.borderGreen}`,
-                      letterSpacing: "0.5px",
-                    }}
-                  >
-                    {overview.reorderCandidates.length ? "ACTION" : "STABLE"}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    height: 190,
-                    background: "#fff",
-                    borderRadius: 8,
-                    border: `1px dashed ${C.borderGreen}`,
-                    padding: "18px 16px",
-                    display: "flex",
-                    justifyContent: "center",
-                    flexDirection: "column",
-                    gap: 10,
-                  }}
-                >
-                  {overview.reorderCandidates.length ? (
-                    overview.reorderCandidates.map((item) => (
-                      <div
-                        key={item.product}
-                        style={{
-                          display: "flex",
-                          justifyContent: "space-between",
-                          alignItems: "center",
-                        }}
-                      >
-                        <div>
-                          <div
-                            style={{
-                              fontSize: 13,
-                              color: C.text,
-                              fontWeight: 600,
-                            }}
-                          >
-                            {item.product}
-                          </div>
-                          <div style={{ fontSize: 11, color: C.textDim }}>
-                            Stock {item.stock} · Reorder {item.reorder}
-                          </div>
-                        </div>
-                        <span
-                          style={{ fontSize: 11, color: C.green, fontWeight: 700 }}
-                        >
-                          {item.status}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <>
-                      <span
-                        style={{
-                          fontSize: 28,
-                          color: C.greenMid,
-                          textAlign: "center",
-                        }}
-                      >
-                        O
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 13,
-                          color: C.textMuted,
-                          fontWeight: 500,
-                          textAlign: "center",
-                        }}
-                      >
-                        No urgent reorder recommendations
-                      </span>
-                      <span
-                        style={{
-                          fontSize: 11,
-                          color: C.textDim,
-                          textAlign: "center",
-                        }}
-                      >
-                        Current product stock is above reorder levels
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 24 }}>
+              <StockHealthCard
+                health={overview.stockHealth}
+                total={overview.productCount}
+                onOpen={() => handleNavClick("Inventory")}
+              />
+              <ReorderCard candidates={overview.reorderCandidates} onReview={openProcurementFor} />
             </div>
 
-            <div
-              style={{
-                background: C.card,
-                borderRadius: 12,
-                padding: "24px",
-                border: `1px solid ${C.border}`,
-                boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  marginBottom: 18,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      ...syne,
-                      fontWeight: 700,
-                      color: C.text,
-                      fontSize: 15,
-                    }}
-                  >
-                    Anomaly & System Alerts
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 12,
-                      color: C.textDim,
-                      marginTop: 4,
-                    }}
-                  >
-                    Database-driven stock and supplier monitoring
-                  </div>
-                </div>
-                <span
-                  style={{
-                    background: C.greenSubtle,
-                    color: C.green,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    padding: "4px 14px",
-                    borderRadius: 4,
-                    border: `1px solid ${C.borderGreen}`,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    letterSpacing: "0.5px",
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: "50%",
-                      background: C.green,
-                      display: "inline-block",
-                    }}
-                  />
-                  {overview.summary.activeAlerts} ACTIVE
-                </span>
-              </div>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                  padding: "28px 0",
-                  color: C.textDim,
-                  fontSize: 13,
-                  background: C.greenSubtle,
-                  borderRadius: 8,
-                  border: `1px dashed ${C.borderGreen}`,
-                }}
-              >
-                <span style={{ color: C.greenMid }}>!</span>
-                {overview.summary.activeAlerts
-                  ? `${overview.summary.activeAlerts} attention points found in your imported data`
-                  : "All clear - no active alerts"}
-              </div>
-            </div>
+            <AlertsCard alerts={overview.alerts || []} anomalies={anomalies} onNavigate={handleNavClick} />
           </>
         )}
 
@@ -1312,9 +1171,9 @@ export default function ERPDashboard({ business, onLogout }) {
             onFocusHandled={() => setProcurementFocusId(null)}
           />
         )}
-        {activeNav === "Supplier Marketplace" && <SupplierMarketplacePage business={business} />}
+        {activeNav === "Supplier Marketplace" && <SupplierMarketplacePage business={business} onNavigate={handleNavClick} />}
         {activeNav === "Analytics" && <BAnalyticsPage />}
-        {activeNav === "AI Insights" && <BAIInsightsPage />}
+        {activeNav === "AI Insights" && <BAIInsightsPage onNavigate={handleNavClick} />}
         {activeNav === "Alerts" && <BAlertsPage />}
         {activeNav === "Settings" && <BSettingsPage business={business} onLogout={onLogout} />}
       </main>

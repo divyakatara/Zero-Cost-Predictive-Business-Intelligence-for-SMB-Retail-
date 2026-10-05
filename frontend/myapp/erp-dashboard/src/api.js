@@ -1,4 +1,5 @@
-export const API_BASE_URL = "http://127.0.0.1:8000";
+// Override with VITE_API_BASE_URL (e.g. in .env.local) to point at another backend.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 const TOKEN_KEY = "smarterp_access_token";
 
 // Per-tab storage: each tab keeps its own session (e.g. a business tab and an

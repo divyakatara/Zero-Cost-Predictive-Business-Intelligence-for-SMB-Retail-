@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 import models
 from database import get_db
+from services import replenishment
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
@@ -56,28 +57,35 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         for row in reversed(monthly_rows)
     ]
 
-    product_rows = db.query(models.Product).order_by(models.Product.id.asc()).all()
-    inventory_rows = []
-    reorder_candidates = []
-    low_stock_items = 0
-
-    for product in product_rows[:7]:
-        status = stock_status(
-            product.supplier_stock,
-            product.reorder_level,
-            product.stock_status,
-        )
-        row = {
-            "product": product.product_code or product.name,
-            "stock": product.supplier_stock or 0,
-            "reorder": product.reorder_level or 0,
-            "status": status,
-        }
-        inventory_rows.append(row)
+    # Every product counts toward stock health (this used to stop at the first 7).
+    product_rows = db.query(models.Product).order_by(models.Product.product_code.asc()).all()
+    stock_health = {"Good": 0, "Low": 0, "Critical": 0}
+    stock_alerts = []
+    for product in product_rows:
+        status = stock_status(product.supplier_stock, product.reorder_level, None)
+        stock_health[status] = stock_health.get(status, 0) + 1
         if status in {"Critical", "Low"}:
-            low_stock_items += 1
-            if len(reorder_candidates) < 3:
-                reorder_candidates.append(row)
+            stock_alerts.append({
+                "severity": "high" if status == "Critical" else "medium",
+                "title": f"{product.product_code or product.name} is {status.lower()} on stock",
+                "detail": f"{product.supplier_stock or 0} units left against a reorder level of {product.reorder_level or 0}.",
+                "target": "Inventory",
+            })
+    stock_alerts.sort(key=lambda alert: alert["severity"] != "high")
+    low_stock_items = stock_health["Low"] + stock_health["Critical"]
+
+    # Same deterministic analysis the Procurement AI page uses, so the numbers match.
+    reorder_candidates = [
+        {
+            "productId": item["product_id"],
+            "product": item["product_name"],
+            "status": item["stock_status"].title(),
+            "stock": item["current_stock"],
+            "reorder": item["reorder_level"],
+            "recommendedQuantity": item["recommended_quantity"],
+        }
+        for item in replenishment.list_replenishment_candidates(db)
+    ]
 
     top_product_rows = (
         db.query(
@@ -104,24 +112,37 @@ def get_dashboard_overview(db: Session = Depends(get_db)):
         for row in top_product_rows
     ]
 
-    supplier_alerts = (
-        db.query(func.count(models.Supplier.id))
+    risky_suppliers = (
+        db.query(models.Supplier)
         .filter(models.Supplier.supply_risk_score.isnot(None))
         .filter(models.Supplier.supply_risk_score >= 3)
-        .scalar()
-        or 0
+        .order_by(models.Supplier.supply_risk_score.desc())
+        .all()
     )
+    supplier_alerts = [
+        {
+            "severity": "medium",
+            "title": f"{supplier.name} has an elevated supply risk",
+            "detail": f"Risk score {supplier.supply_risk_score}/5 · lead time {supplier.lead_time} days"
+            + (f" · on-time {supplier.on_time_delivery_rate:.0f}%" if supplier.on_time_delivery_rate is not None else ""),
+            "target": "Supplier Marketplace",
+        }
+        for supplier in risky_suppliers
+    ]
 
     return {
         "summary": {
             "salesToday": float(sales_today),
             "totalProfit": float(total_profit),
+            "totalRevenue": float(total_revenue),
             "lowStockItems": low_stock_items,
-            "activeAlerts": int(low_stock_items + supplier_alerts),
+            "activeAlerts": len(stock_alerts) + len(supplier_alerts),
         },
         "monthlySales": monthly_sales,
         "topProducts": top_products,
-        "inventoryRows": inventory_rows,
+        "stockHealth": stock_health,
+        "productCount": len(product_rows),
         "reorderCandidates": reorder_candidates,
-        "hasData": bool(monthly_sales or top_products or inventory_rows),
+        "alerts": stock_alerts + supplier_alerts,
+        "hasData": bool(monthly_sales or top_products or product_rows),
     }
