@@ -277,34 +277,29 @@ def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get
     # Same ordering the procurement agent uses to pick a supplier.
     suppliers = ranked_suppliers(db)
 
-    def supplier_card(supplier, index_rank=None, badge=None):
-        calc_rank = supplier.rank or index_rank
-        w_score = round(float(supplier.weighted_score or 0), 1)
-        q_score = round(float(supplier.quality_score or 0), 1)
-        ot_rate = round(float(supplier.on_time_delivery_rate or 0), 1)
-        avg_c = round(float(supplier.average_cost or 0), 2)
+    # Products each supplier supplies to this business (the session is scoped).
+    supplied = defaultdict(list)
+    for code, supplier_code in db.query(models.Product.product_code, models.Product.supplier_code).all():
+        if code and supplier_code:
+            supplied[supplier_code].append(code)
 
+    def supplier_card(supplier, index_rank=None, badge=None):
+        pct = lambda value: f"{value:.0f}%" if value is not None else "-"
         return {
             "id": supplier.id,
             "name": supplier.name,
-            "category": supplier.location or "General",
+            "location": supplier.location or "-",
             "rating": round(float(supplier.rating or 0), 1),
-            "reviews": int((supplier.stock_utilization_rate or 0) / 10),
-            "status": "Active",
-            "since": supplier.branch_id or "Imported",
-            "tags": [value for value in [supplier.product_code, supplier.contact_number, supplier.stock_status] if value] or ["No tags"],
-            "leadTime": f"{supplier.lead_time or 0} days",
-            "fillRate": f"{ot_rate}%" if ot_rate else f"{max(0, 100 - (supplier.supply_risk_score or 0) * 10)}%",
-            "onTime": f"{ot_rate}%" if ot_rate else f"{max(0, 100 - (supplier.lead_time or 0) * 5)}%",
-            "contact": supplier.contact_number or "No contact info",
-            "phone": supplier.contact_number or "No phone",
-            "location": supplier.location or "No location",
-            "desc": f"Weighted Score: {w_score}/100 | Rank #{calc_rank} | Avg Cost: ₹{avg_c} | Quality: {q_score}",
-            "rank": calc_rank,
-            "badge": badge or (f"Rank #{calc_rank}" if calc_rank else None),
-            "weightedScore": w_score,
-            "averageCost": avg_c,
-            "qualityScore": q_score,
+            "rank": supplier.rank or index_rank,
+            "badge": badge,
+            "leadTime": f"{supplier.lead_time} days" if supplier.lead_time is not None else "-",
+            "onTime": pct(supplier.on_time_delivery_rate),
+            "quality": f"{supplier.quality_score:.0f}" if supplier.quality_score is not None else "-",
+            "reliability": f"{supplier.reliability_score:.0f}" if supplier.reliability_score is not None else "-",
+            "weightedScore": round(float(supplier.weighted_score or 0), 1),
+            "riskScore": supplier.supply_risk_score,
+            "contact": supplier.contact_number,
+            "products": sorted(supplied.get(supplier.supplier_code, []), key=lambda c: (len(c), c)),
         }
 
     # Suppliers this business has actually ordered from, most-used first.
@@ -338,10 +333,9 @@ def suppliers_overview(business: Optional[str] = None, db: Session = Depends(get
     for index, supplier in enumerate(suppliers, start=1):
         if supplier.id in used_ids or len(recommended) >= 9:
             continue
-        badge = f"Rank #{supplier.rank or index}"
-        recommended.append(supplier_card(supplier, index_rank=index, badge=badge))
+        recommended.append(supplier_card(supplier, index_rank=index))
 
-    categories = ["All"] + sorted({supplier["category"] for supplier in my_suppliers + recommended})
+    categories = ["All"] + sorted({supplier["location"] for supplier in my_suppliers + recommended})
 
     return {
         "headerNote": "Partners & recommended suppliers — Ranked via Weighted Scoring Algorithm",
@@ -402,7 +396,8 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
     dead_stock_count = sum(1 for product in products if product.product_code not in sold_product_codes)
     dead_stock_share = round((dead_stock_count / len(products)) * 100, 1) if products else 0
 
-    supplier_reliability = round((sum(float(s.rating or 0) for s in suppliers) / len(suppliers)) / 5 * 100, 1) if suppliers else 0
+    reliability_scores = [s.reliability_score for s in suppliers if s.reliability_score is not None]
+    supplier_reliability = round(sum(reliability_scores) / len(reliability_scores), 1) if reliability_scores else 0
 
     bucket = "day" if period == "week" else "week"
     weekly_rows = (
@@ -483,47 +478,22 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
             demand_totals[label] = currency_value(row.revenue)
     demand_data = [{"name": day, "value": round(demand_totals[day], 2)} for day in weekday_names]
 
-    matrix_rows = (
-        in_period(
-            db.query(
-                models.Sale.product_code,
-                func.coalesce(func.sum(func.coalesce(models.Sale.quantity_sold, 0)), 0).label("qty"),
-                func.coalesce(func.sum(models.Sale.revenue), 0.0).label("revenue"),
-                func.coalesce(func.sum(models.Sale.profit), 0.0).label("profit"),
-            )
-        )
-        .filter(models.Sale.product_code.isnot(None))
-        .group_by(models.Sale.product_code)
-        .order_by(desc("revenue"))
-        .limit(4)
-        .all()
-    )
-    matrix_data = []
-    for row in matrix_rows:
-        revenue = currency_value(row.revenue)
-        profit = currency_value(row.profit)
-        margin = (profit / revenue * 100) if revenue else 0
-        matrix_data.append(
-            {
-                "name": row.product_code,
-                "velocity": f"{int(row.qty or 0)} units sold",
-                "margin": f"{margin:.1f}%",
-                "note": f"Revenue {revenue:.0f} - Profit {profit:.0f}",
-            }
-        )
-
-    supplier_data = []
-    for supplier in suppliers[:4]:
-        supplier_data.append(
-            {
-                "name": supplier.name,
-                "category": supplier.location or "General",
-                "fillRate": f"{max(0, 100 - (supplier.supply_risk_score or 0) * 10)}%",
-                "onTime": f"{max(0, 100 - (supplier.lead_time or 0) * 5)}%",
-                "variance": f"{(supplier.supply_risk_score or 0) * 10}%",
-                "signal": "Stable" if (supplier.supply_risk_score or 0) <= 2 else "Watch",
-            }
-        )
+    # Every supplier, best-ranked first, using the recorded delivery and quality
+    # figures (this used to show only 4 suppliers with derived percentages).
+    supplier_data = [
+        {
+            "name": supplier.name,
+            "location": supplier.location or "-",
+            "onTime": f"{supplier.on_time_delivery_rate:.0f}%" if supplier.on_time_delivery_rate is not None else "-",
+            "quality": f"{supplier.quality_score:.0f}" if supplier.quality_score is not None else "-",
+            "reliability": f"{supplier.reliability_score:.0f}" if supplier.reliability_score is not None else "-",
+            "leadTime": f"{supplier.lead_time} days" if supplier.lead_time is not None else "-",
+            "score": f"{supplier.weighted_score:.1f}" if supplier.weighted_score is not None else "-",
+            "rank": supplier.rank,
+            "signal": "Watch" if (supplier.supply_risk_score or 0) >= 3 else "Stable",
+        }
+        for supplier in sorted(suppliers, key=lambda s: (s.rank is None, s.rank or 0))
+    ]
 
     return {
         "headerNote": f"Operational breakdowns - {period_label} - Live database data",
@@ -532,14 +502,12 @@ def analytics_overview(period: str = "all", db: Session = Depends(get_db)):
         "kpis": [
             {"label": "Stock Turnover", "value": f"{stock_turnover}x", "sub": "Units sold versus available stock"},
             {"label": "Dead Stock Share", "value": f"{dead_stock_share}%", "sub": "Products without recorded sales"},
-            {"label": "Supplier Reliability", "value": f"{supplier_reliability}%", "sub": "Derived from supplier ratings"},
+            {"label": "Supplier Reliability", "value": f"{supplier_reliability}%", "sub": "Average recorded reliability score"},
             {"label": "Forecast Accuracy", "value": f"{forecast_accuracy}%", "sub": "Actual vs lag-based prediction"},
         ],
         "categoryData": category_data or [{"name": "General", "value": 0}],
         "demandData": demand_data,
-        "accuracyData": accuracy_data,
-        "matrixData": matrix_data or [{"name": "No product", "velocity": "0 units sold", "margin": "0%", "note": "Waiting for sales data"}],
-        "supplierData": supplier_data or [{"name": "No supplier", "category": "General", "fillRate": "0%", "onTime": "0%", "variance": "0%", "signal": "Waiting"}],
+        "supplierData": supplier_data,
     }
 
 
@@ -559,70 +527,59 @@ def insights_overview(db: Session = Depends(get_db)):
         .all()
     )
 
-    critical_products = [
-        product for product in products
-        if classify_stock(product.supplier_stock, product.reorder_level, product.stock_status) == "critical"
-    ]
-    risky_suppliers = [supplier for supplier in suppliers if (supplier.supply_risk_score or 0) >= 3]
+    statuses = {product.id: classify_stock(product.supplier_stock, product.reorder_level, product.stock_status) for product in products}
+    critical_products = [p for p in products if statuses[p.id] == "critical"]
+    low_products = [p for p in products if statuses[p.id] == "low"]
+    restock = critical_products + low_products
+    risky_suppliers = sorted(
+        (supplier for supplier in suppliers if (supplier.supply_risk_score or 0) >= 3),
+        key=lambda supplier: -(supplier.supply_risk_score or 0),
+    )
     top_product = sales_rows[0] if sales_rows else None
-
-    action_items = len(critical_products) + len(risky_suppliers)
-    sales_opportunities = len(sales_rows)
-    risk_flags = len(risky_suppliers)
-    priority_score = min(100, (action_items + sales_opportunities) * 10)
+    total_revenue = db.query(func.coalesce(func.sum(models.Sale.revenue), 0.0)).scalar() or 0.0
+    names = lambda items: ", ".join(p.product_code or p.name for p in items)
 
     primary_suggestions = [
         {
-            "title": f"Restock {critical_products[0].product_code}" if critical_products else "Inventory is stable",
+            "title": f"Restock {names(restock)}" if restock else "Inventory is stable",
             "subtitle": "Inventory",
-            "priority": f"Priority {min(5, len(critical_products))}",
-            "impact": f"{len(critical_products)} critical items" if critical_products else "0 critical items",
-            "action": "Review reorder quantities" if critical_products else "No action needed",
-            "reason": "Some products are at or below reorder level." if critical_products else "Current stock levels look healthy.",
+            "priority": "High" if critical_products else "Medium" if low_products else "Low",
+            "impact": f"{len(critical_products)} critical, {len(low_products)} low" if restock else "No product near its reorder level",
+            "action": "Review the reorder in Procurement AI" if restock else "No action needed",
+            "reason": "These products are at or within 25% of their reorder level." if restock else "Every product is above its reorder threshold.",
         },
         {
-            "title": f"Push demand for {top_product.product_code}" if top_product else "No sales leader yet",
+            "title": f"Promote {top_product.product_code}" if top_product else "No sales leader yet",
             "subtitle": "Sales",
-            "priority": f"Priority {2 if top_product else 0}",
-            "impact": f"Revenue {currency_value(top_product.revenue):.0f}" if top_product else "0",
-            "action": "Promote top-selling product" if top_product else "Wait for more sales data",
-            "reason": "Highest-revenue product can be highlighted for repeat orders." if top_product else "Not enough sales data yet.",
+            "priority": "Medium" if top_product else "Low",
+            "impact": (
+                f"₹{currency_value(top_product.revenue):,.0f} revenue ({currency_value(top_product.revenue) / total_revenue * 100:.1f}% of total)"
+                if top_product and total_revenue else "-"
+            ),
+            "action": "Feature your best seller" if top_product else "Wait for more sales data",
+            "reason": "Your highest-revenue product; keeping it in stock and visible protects the most revenue." if top_product else "Not enough sales data yet.",
         },
         {
-            "title": f"Review {risky_suppliers[0].name}" if risky_suppliers else "Supplier base looks stable",
+            "title": f"Review {', '.join(s.name for s in risky_suppliers)}" if risky_suppliers else "Supplier base looks stable",
             "subtitle": "Supplier",
-            "priority": f"Priority {min(5, len(risky_suppliers))}",
-            "impact": f"{len(risky_suppliers)} risky suppliers" if risky_suppliers else "0 risk flags",
-            "action": "Follow up with supplier" if risky_suppliers else "No action needed",
-            "reason": "Higher supply risk scores need attention." if risky_suppliers else "Suppliers are within acceptable risk.",
+            "priority": "Medium" if risky_suppliers else "Low",
+            "impact": (
+                "; ".join(f"risk {s.supply_risk_score}/5, lead time {s.lead_time} days" for s in risky_suppliers)
+                if risky_suppliers else "No supplier with risk score 3 or more"
+            ),
+            "action": "Follow up or line up an alternative supplier" if risky_suppliers else "No action needed",
+            "reason": "A supply risk score of 3/5 or higher means delays are more likely." if risky_suppliers else "All suppliers are within acceptable risk.",
         },
-    ]
-
-    recommendation_cards = [
-        {"title": "Boost repeat orders", "value": str(sales_opportunities), "note": "Top products ready for promotion"},
-        {"title": "Reduce lost sales", "value": str(len(critical_products)), "note": "Critical items to restock"},
-        {"title": "Improve stock timing", "value": str(sum(1 for p in products if classify_stock(p.supplier_stock, p.reorder_level, p.stock_status) == 'low')), "note": "Low-stock products to monitor"},
-        {"title": "Cut supply delays", "value": str(len(risky_suppliers)), "note": "Suppliers with elevated risk"},
-    ]
-
-    suggestion_table = [
-        {"area": "Sales", "suggestion": primary_suggestions[1]["action"], "confidence": "72%" if top_product else "0%", "status": "Ready" if top_product else "Waiting"},
-        {"area": "Inventory", "suggestion": primary_suggestions[0]["action"], "confidence": "88%" if critical_products else "40%", "status": "Action" if critical_products else "Stable"},
-        {"area": "Supplier", "suggestion": primary_suggestions[2]["action"], "confidence": "70%" if risky_suppliers else "35%", "status": "Review" if risky_suppliers else "Stable"},
-        {"area": "Operations", "suggestion": "Track demand and supply daily", "confidence": "60%", "status": "Monitor"},
     ]
 
     return {
-        "headerNote": "Smart suggestions to improve sales and business performance - Live database data",
+        "headerNote": "Suggestions from your current stock, sales and suppliers - Live database data",
         "kpis": [
-            {"label": "Action Items", "value": str(action_items), "sub": "Combined stock and supplier actions"},
-            {"label": "Sales Opportunities", "value": str(sales_opportunities), "sub": "Products with strong demand"},
-            {"label": "Risk Flags", "value": str(risk_flags), "sub": "Suppliers needing review"},
-            {"label": "Priority Score", "value": f"{priority_score}%", "sub": "Overall urgency score"},
+            {"label": "Action Items", "value": str(len(restock) + len(risky_suppliers)), "sub": "Restocks and supplier reviews"},
+            {"label": "Products to Restock", "value": str(len(restock)), "sub": f"{len(critical_products)} critical · {len(low_products)} low"},
+            {"label": "Suppliers to Review", "value": str(len(risky_suppliers)), "sub": "Supply risk score 3/5 or higher"},
         ],
         "primarySuggestions": primary_suggestions,
-        "recommendationCards": recommendation_cards,
-        "suggestionTable": suggestion_table,
     }
 
 

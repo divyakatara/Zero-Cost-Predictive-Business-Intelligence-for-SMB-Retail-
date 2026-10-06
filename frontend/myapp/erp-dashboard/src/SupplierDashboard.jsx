@@ -159,9 +159,6 @@ export default function SupplierDashboard({ user, onLogout }) {
               {user?.supplier_id ? `AI-Driven overview · Linked to ${user.supplier_id}` : "AI-Driven overview · No linked supplier yet"}
             </p>
           </div>
-          <div style={{ padding: "8px 16px", background: C.greenSubtle, border: `1px solid ${C.greenBorder}`, borderRadius: 8, fontSize: 12, color: C.green, fontWeight: 600, letterSpacing: "0.5px" }}>
-            ◈ Live Feed
-          </div>
         </div>
         )}
 
