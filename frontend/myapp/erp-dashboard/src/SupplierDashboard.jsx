@@ -38,14 +38,14 @@ const syne = { fontFamily: "Syne, sans-serif" };
 const ibm  = { fontFamily: "'IBM Plex Sans', sans-serif" };
 
 const navItems = [
-  { id: "dashboard",            label: "Dashboard",            icon: "▦" },
-  { id: "inventory",            label: "Inventory",            icon: "◫" },
-  { id: "sales",                label: "Sales",                icon: "◈" },
-  { id: "businessmarketplace",  label: "Business Marketplace", icon: "◉" },
-  { id: "analytics",            label: "Analytics",            icon: "◎" },
-  { id: "aiinsights",           label: "AI Insights",          icon: "◌" },
-  { id: "alerts",               label: "Alerts",               icon: "◬" },
-  { id: "settings",             label: "Settings",             icon: "◍" },
+  { id: "dashboard",            label: "Dashboard"            },
+  { id: "inventory",            label: "Inventory"            },
+  { id: "sales",                label: "Sales"                },
+  { id: "businessmarketplace",  label: "Business Marketplace" },
+  { id: "analytics",            label: "Analytics"            },
+  { id: "aiinsights",           label: "AI Insights"          },
+  { id: "alerts",               label: "Alerts"               },
+  { id: "settings",             label: "Settings"             },
 ];
 
 const statusStyle = {
@@ -111,7 +111,7 @@ export default function SupplierDashboard({ user, onLogout }) {
           const active = activeNav === item.id;
           return (
             <button key={item.id} onClick={() => setActiveNav(item.id)} style={{
-              display: "flex", alignItems: "center", gap: 12, width: "100%",
+              display: "block", width: "100%",
               padding: "11px 24px",
               background: active ? "#3a3a3a" : "transparent",
               color: active ? C.greenLight : C.sideMuted,
@@ -121,8 +121,8 @@ export default function SupplierDashboard({ user, onLogout }) {
               fontWeight: active ? 600 : 400,
               transition: "all .15s", textAlign: "left",
               fontFamily: "'IBM Plex Sans', sans-serif",
+              letterSpacing: "0.2px",
             }}>
-              <span style={{ fontSize: 14 }}>{item.icon}</span>
               {item.label}
             </button>
           );
@@ -130,10 +130,12 @@ export default function SupplierDashboard({ user, onLogout }) {
 
         <div style={{ marginTop: "auto", padding: "20px 24px", borderTop: `1px solid ${C.sideBorder}` }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#3a3a3a", border: `1px solid ${C.sideBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.greenLight, fontWeight: 700 }}>U</div>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.greenLight }}>{user?.name || "User"}</div>
-              <div style={{ fontSize: 11, color: C.sideDim }}>{user?.supplier_id || "Supplier"}</div>
+            <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#3a3a3a", border: `1px solid ${C.sideBorder}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: C.greenLight, fontWeight: 700, flexShrink: 0 }}>
+              {(user?.name || "S").charAt(0).toUpperCase()}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.greenLight, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name || "Supplier"}</div>
+              <div style={{ fontSize: 11, color: C.sideDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.supplier_id || "No linked supplier ID"}</div>
             </div>
           </div>
           {onLogout && (

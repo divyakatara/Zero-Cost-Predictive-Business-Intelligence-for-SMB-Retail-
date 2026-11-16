@@ -20,9 +20,16 @@ def anomalies(monkeypatch):
     monkeypatch.setattr(anomaly, "_LAST_RESULT", result)
 
 
+SUPPLIER_A = {"role": "supplier", "sub": "a@test.local"}
+SUPPLIER_B = {"role": "supplier", "sub": "b@test.local"}
+ADMIN = {"role": "admin", "sub": "admin"}
+
+
 @pytest.fixture
 def catalog(db):
     db.add_all([
+        models.User(name="A", email="a@test.local", password="x", role="supplier", supplier_code="sup_a"),
+        models.User(name="B", email="b@test.local", password="x", role="supplier", supplier_code="sup_b"),
         models.Supplier(name="A", supplier_code="sup_a"),
         models.Supplier(name="B", supplier_code="sup_b"),
         models.Product(name="1", product_code="item_1", supplier_code="sup_a"),
@@ -33,8 +40,10 @@ def catalog(db):
     db.commit()
 
 
-def _fetch(db, code):
-    return anomaly.get_supplier_anomalies(code, limit=200, refresh=False, db=db)
+def _fetch(db, code, current_user=None):
+    return anomaly.get_supplier_anomalies(
+        code, limit=200, refresh=False, db=db, current_user=current_user or ADMIN
+    )
 
 
 def test_supplier_sees_only_its_own_products_anomalies(db, catalog, anomalies):
@@ -50,6 +59,16 @@ def test_other_supplier_is_isolated(db, catalog, anomalies):
     result = _fetch(db, "sup_b")
 
     assert [a["transaction_id"] for a in result["results"]] == ["t4"]
+
+
+def test_supplier_account_cannot_read_another_suppliers_anomalies(db, catalog, anomalies):
+    """The ownership rule the sibling /suppliers/* endpoints already enforce."""
+    assert _fetch(db, "sup_a", SUPPLIER_A)["supplier_code"] == "sup_a"
+
+    with pytest.raises(HTTPException) as exc:
+        _fetch(db, "sup_a", SUPPLIER_B)
+
+    assert exc.value.status_code == 403
 
 
 def test_unknown_supplier_returns_404(db, catalog, anomalies):

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { fetchJson, formatCurrency } from "./api";
 
 const C = {
@@ -22,6 +22,13 @@ const syne = { fontFamily: "Syne, sans-serif" };
 const ibm = { fontFamily: "'IBM Plex Sans', sans-serif" };
 const filters = ["All", "High Risk", "Moderate Risk"];
 
+// Same severity tones the anomaly rows below use.
+const severityTone = {
+  High: { bg: "#fdf0f0", color: "#c83030", border: "#f2bcbc" },
+  Medium: { bg: "#fdf8e8", color: "#c8a030", border: "#ecdca2" },
+  Low: { bg: "#f0f6f0", color: "#4a7a49", border: "#c8d8c7" },
+};
+
 export default function BAlertsPage() {
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
@@ -30,11 +37,26 @@ export default function BAlertsPage() {
   const [loading, setLoading] = useState(true);
   const [retraining, setRetraining] = useState(false);
   const [error, setError] = useState("");
+  // Stock and supplier alerts from /business-pages/alerts. Kept in their own
+  // state so a failure here can never take down the anomaly results below.
+  const [operational, setOperational] = useState(null);
+  const [operationalError, setOperationalError] = useState("");
 
-  const loadData = async (refresh = false) => {
+  const loadOperationalAlerts = useCallback(async () => {
+    try {
+      setOperational(await fetchJson("/business-pages/alerts"));
+      setOperationalError("");
+    } catch {
+      setOperational(null);
+      setOperationalError("Could not load stock and supplier alerts from the backend.");
+    }
+  }, []);
+
+  const loadData = useCallback(async (refresh = false) => {
     setLoading(true);
     setRetraining(refresh);
     setError("");
+    loadOperationalAlerts();  // deliberately not awaited: independent of the model
     try {
       // Retrain once (via the summary call), then read the fresh results.
       const sumRes = await fetchJson(`/anomaly/summary${refresh ? "?refresh=true" : ""}`);
@@ -47,11 +69,11 @@ export default function BAlertsPage() {
       setLoading(false);
       setRetraining(false);
     }
-  };
+  }, [loadOperationalAlerts]);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
   const filteredAnomalies = anomalies.filter((item) => {
     // Filter by risk severity based on score (more negative = higher risk)
@@ -99,7 +121,9 @@ export default function BAlertsPage() {
             </h1>
           </div>
           <p style={{ margin: "0 0 0 13px", color: C.textDim, fontSize: 12, letterSpacing: "0.5px" }}>
-            Isolation Forest Model · 200 estimators · 2% contamination threshold · 3,650 records analyzed
+            {summary
+              ? `Isolation Forest · ${summary.model_params?.n_estimators} estimators · ${(summary.contamination_rate * 100).toFixed(1)}% contamination · ${summary.total_rows?.toLocaleString("en-IN")} records analysed`
+              : "Isolation Forest anomaly detection over the transaction history"}
           </p>
         </div>
 
@@ -138,8 +162,9 @@ export default function BAlertsPage() {
             color: C.danger,
             fontSize: 13,
             display: "flex",
-            justify: "space-between",
+            justifyContent: "space-between",
             alignItems: "center",
+            gap: 12,
           }}
         >
           <div>
@@ -183,7 +208,7 @@ export default function BAlertsPage() {
       {/* SUMMARY KPIS */}
       {summary && (
         <>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
             <div
               style={{
                 background: C.green,
@@ -196,24 +221,18 @@ export default function BAlertsPage() {
               }}
             >
               <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <span style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
-                  Potential Anomalies
-                </span>
-                <span style={{ fontSize: 18, color: "rgba(255,255,255,0.8)" }}>!</span>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.7)", letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>
+                Potential Anomalies
               </div>
-              <div style={{ ...syne, fontSize: 32, fontWeight: 800, lineHeight: 1 }}>{summary.total_anomalies}</div>
+              <div style={{ ...syne, fontSize: 32, fontWeight: 700, lineHeight: 1 }}>{summary.total_anomalies}</div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.75)", marginTop: 8 }}>
                 Flagged for business review
               </div>
             </div>
 
             <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
-                  Contamination Rate
-                </span>
-                <span style={{ fontSize: 16, color: C.textDim }}>%</span>
+              <div style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>
+                Contamination Rate
               </div>
               <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
                 {(summary.contamination_rate * 100).toFixed(1)}%
@@ -222,11 +241,8 @@ export default function BAlertsPage() {
             </div>
 
             <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
-                  Total Evaluated
-                </span>
-                <span style={{ fontSize: 16, color: C.textDim }}>#</span>
+              <div style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>
+                Total Evaluated
               </div>
               <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
                 {summary.total_rows?.toLocaleString("en-IN")}
@@ -235,11 +251,8 @@ export default function BAlertsPage() {
             </div>
 
             <div style={{ background: C.card, borderRadius: 12, padding: "22px 24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-                <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>
-                  Normal Rows
-                </span>
-                <span style={{ fontSize: 16, color: C.textDim }}>✓</span>
+              <div style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>
+                Normal Rows
               </div>
               <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>
                 {summary.normal_rows?.toLocaleString("en-IN")}
@@ -313,6 +326,67 @@ export default function BAlertsPage() {
         </>
       )}
 
+      {/* STOCK & SUPPLIER ALERTS — /business-pages/alerts */}
+      <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)", marginBottom: 24 }}>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 16 }}>Stock &amp; Supplier Alerts</div>
+          <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>
+            {operational
+              ? `${operational.recentTable.length} current attention point(s) from your stock levels, revenue trend and supplier risk`
+              : "Current attention points from your stock levels, revenue trend and supplier risk"}
+          </div>
+        </div>
+
+        {operationalError && (
+          <div style={{ padding: "12px 16px", background: C.dangerBg, border: "1px solid #f2bcbc", borderRadius: 10, color: C.danger, fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <span>{operationalError}</span>
+            <button
+              onClick={loadOperationalAlerts}
+              style={{ padding: "4px 10px", background: C.card, border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 12, cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif" }}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {!operational && !operationalError && (
+          <div style={{ padding: "24px 0", textAlign: "center", fontSize: 13, color: C.textDim }}>
+            Loading stock and supplier alerts…
+          </div>
+        )}
+
+        {operational && (
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.border}`, background: "#faf7f2" }}>
+                {["Type", "Alert", "Severity", "Status"].map((heading) => (
+                  <th key={heading} style={{ textAlign: "left", padding: "12px 10px", fontSize: 10, fontWeight: 700, color: C.textDim, textTransform: "uppercase" }}>
+                    {heading}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {operational.recentTable.map((row) => {
+                const tone = severityTone[row.severity] || severityTone.Low;
+                return (
+                  <tr key={`${row.type}-${row.alert}`} style={{ borderBottom: `1px solid ${C.border}` }}>
+                    <td style={{ padding: "12px 10px", color: C.textMuted }}>{row.type}</td>
+                    <td style={{ padding: "12px 10px", fontWeight: 600, color: C.text }}>{row.alert}</td>
+                    <td style={{ padding: "12px 10px" }}>
+                      <span style={{ background: tone.bg, color: tone.color, border: `1px solid ${tone.border}`, padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700 }}>
+                        {row.severity}
+                      </span>
+                    </td>
+                    <td style={{ padding: "12px 10px", color: row.status === "Open" ? C.text : C.textDim }}>{row.status}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
+
       {/* ANOMALY LOG TABLE */}
       <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
@@ -337,6 +411,8 @@ export default function BAlertsPage() {
                 width: 240,
                 outline: "none",
                 fontFamily: "'IBM Plex Sans', sans-serif",
+                background: C.bg,
+                color: C.text,
               }}
             />
 

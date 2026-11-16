@@ -38,8 +38,6 @@ const emptyState = {
   topProductsChart: [],
 };
 
-const kpiIcons = ["◈", "◎", "◉", "◌"];
-
 function formatKpi(kpi) {
   return kpi.label === "Total Orders" ? Number(kpi.value || 0).toLocaleString("en-IN") : formatCurrency(kpi.value);
 }
@@ -103,7 +101,7 @@ export default function SSalesPage({ user }) {
       : data.thisWeekData;
   const topProducts = data.topProducts;
   const topProductsChart = data.topProductsChart;
-  const kpis = data.kpis.map((kpi, i) => ({ ...kpi, value: formatKpi(kpi), icon: kpiIcons[i], accent: i === 0 }));
+  const kpis = (data.kpis || []).map((kpi, i) => ({ ...kpi, value: formatKpi(kpi), accent: i === 0 }));
 
   return (
     <div style={{ ...ibm }}>
@@ -140,7 +138,7 @@ export default function SSalesPage({ user }) {
       )}
 
       {/* KPI Cards */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
         {kpis.map((kpi, i) => (
           <div key={kpi.label}
             onMouseEnter={() => setHoveredKpi(i)}
@@ -158,10 +156,7 @@ export default function SSalesPage({ user }) {
               cursor: "default",
             }}>
             {kpi.accent && <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }}></div>}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <span style={{ fontSize: 10, color: kpi.accent ? "rgba(255,255,255,0.7)" : C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>{kpi.label}</span>
-              <span style={{ fontSize: 18, color: kpi.accent ? "rgba(255,255,255,0.8)" : C.textDim }}>{kpi.icon}</span>
-            </div>
+            <div style={{ fontSize: 10, color: kpi.accent ? "rgba(255,255,255,0.7)" : C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>{kpi.label}</div>
             <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: kpi.accent ? "#fff" : C.text, lineHeight: 1 }}>{kpi.value}</div>
             <div style={{ fontSize: 12, color: kpi.accent ? "rgba(255,255,255,0.65)" : C.textDim, marginTop: 8 }}>{kpi.sub}</div>
           </div>

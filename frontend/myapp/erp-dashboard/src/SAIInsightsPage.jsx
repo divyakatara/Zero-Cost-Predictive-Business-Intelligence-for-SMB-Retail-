@@ -169,7 +169,7 @@ export default function SAIInsightsPage({ user }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           gap: 16,
           marginBottom: 22,
         }}

@@ -188,7 +188,7 @@ export default function SBusinessMarketplacePage({ user }) {
           No business has ordered from you yet. Orders appear here once a business approves a procurement recommendation that picks you as supplier.
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 36 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 36 }}>
           {data.clients.map((b) => (
             <BusinessCard key={b.id} business={b} hovered={hovered === b.id} onHover={setHovered} onOpen={setSelected}>
               <div style={{ position: "absolute", top: 14, right: 14, background: C.greenSubtle, color: C.green, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 20, border: `1px solid ${C.greenBorder}` }}>
@@ -239,7 +239,7 @@ export default function SBusinessMarketplacePage({ user }) {
           {data.otherBusinesses.length ? "No businesses match this search." : "No other approved businesses yet."}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
           {filteredOthers.map((b) => (
             <BusinessCard key={b.id} business={b} hovered={hovered === b.id} onHover={setHovered} onOpen={setSelected}>
               <div style={{ fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>

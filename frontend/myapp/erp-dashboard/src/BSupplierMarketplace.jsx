@@ -191,7 +191,7 @@ export default function SupplierMarketplacePage({ business, onNavigate }) {
           ? "Suppliers you have ordered from, most-used first · click for details"
           : "You haven't placed an order yet, so these are the best-ranked suppliers · click for details"}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, marginBottom: 36 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16, marginBottom: 36 }}>
         {(data.mySuppliers || []).map((supplier) => (
           <SupplierCard key={supplier.id} supplier={supplier} onOpen={setSelectedSupplier} />
         ))}
@@ -232,7 +232,7 @@ export default function SupplierMarketplacePage({ business, onNavigate }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 16 }}>
         {filteredRecommended.map((supplier) => (
           <SupplierCard key={supplier.id} supplier={supplier} onOpen={setSelectedSupplier} />
         ))}

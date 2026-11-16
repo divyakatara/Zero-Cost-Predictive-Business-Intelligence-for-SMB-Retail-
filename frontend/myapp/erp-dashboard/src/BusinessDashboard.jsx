@@ -69,15 +69,15 @@ const emptyProductSalesData = [
 ];
 
 const navItems = [
-  { label: "Dashboard", icon: "D" },
-  { label: "Inventory", icon: "I" },
-  { label: "Sales", icon: "S" },
-  { label: "Procurement AI", icon: "P" },
-  { label: "Supplier Marketplace", icon: "M" },
-  { label: "Analytics", icon: "A" },
-  { label: "AI Insights", icon: "AI" },
-  { label: "Alerts", icon: "!" },
-  { label: "Settings", icon: "S" },
+  "Dashboard",
+  "Inventory",
+  "Sales",
+  "Procurement AI",
+  "Supplier Marketplace",
+  "Analytics",
+  "AI Insights",
+  "Alerts",
+  "Settings",
 ];
 
 const syne = { fontFamily: "Syne, sans-serif" };
@@ -437,17 +437,15 @@ export default function ERPDashboard({ business, onLogout }) {
     ? overview.topProducts
     : emptyProductSalesData;
 
-  const sidebarBtn = (item) => {
-    const active = activeNav === item.label;
+  const sidebarBtn = (label) => {
+    const active = activeNav === label;
 
     return (
       <button
-        key={item.label}
-        onClick={() => handleNavClick(item.label)}
+        key={label}
+        onClick={() => handleNavClick(label)}
         style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
+          display: "block",
           width: "100%",
           padding: "11px 24px",
           background: active ? "#3a3a3a" : "transparent",
@@ -465,10 +463,7 @@ export default function ERPDashboard({ business, onLogout }) {
           letterSpacing: "0.2px",
         }}
       >
-        <span style={{ fontSize: 14 }}>{item.icon}</span>
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6, width: "100%", justifyContent: "space-between" }}>
-          <span>{item.label}</span>
-        </span>
+        {label}
       </button>
     );
   };
@@ -683,19 +678,17 @@ export default function ERPDashboard({ business, onLogout }) {
 
             {!overview.hasData && !dashboardError && (
               <div style={{
-                background: "linear-gradient(135deg, #f5f2ec 0%, #eef4ee 100%)",
+                background: C.cardGreen,
                 border: `1px solid ${C.greenBorder}`,
-                borderRadius: 14,
-                padding: "36px 40px",
+                borderRadius: 12,
+                padding: "28px 32px",
                 marginBottom: 28,
                 display: "flex",
                 alignItems: "center",
                 gap: 32,
-                boxShadow: "0 2px 12px rgba(74,122,73,0.08)",
               }}>
-                <div style={{ fontSize: 56 }}>📊</div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ ...syne, fontSize: 20, fontWeight: 800, color: C.text, marginBottom: 8 }}>
+                  <div style={{ ...syne, fontSize: 17, fontWeight: 700, color: C.text, marginBottom: 8 }}>
                     No Business Data Connected
                   </div>
                   <div style={{ fontSize: 13, color: C.textMuted, lineHeight: 1.6, marginBottom: 20 }}>
@@ -725,35 +718,24 @@ export default function ERPDashboard({ business, onLogout }) {
                         } catch { /* ignore */ }
                       }}
                       style={{
-                        padding: "10px 22px",
+                        padding: "9px 18px",
                         background: C.green,
                         color: "#fff",
                         border: "none",
-                        borderRadius: 8,
-                        fontSize: 13,
-                        fontWeight: 700,
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 600,
                         cursor: "pointer",
                         fontFamily: "'IBM Plex Sans', sans-serif",
-                        boxShadow: "0 4px 16px rgba(74,122,73,0.25)",
                       }}
                     >
-                      🗄️ Load Demo Dataset
+                      Load Demo Dataset
                     </button>
                     <button
                       onClick={() => handleNavClick("Settings")}
-                      style={{
-                        padding: "10px 22px",
-                        background: "#fff",
-                        color: C.green,
-                        border: `1px solid ${C.greenBorder}`,
-                        borderRadius: 8,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        fontFamily: "'IBM Plex Sans', sans-serif",
-                      }}
+                      style={{ ...linkButtonStyle, padding: "9px 18px", background: "#fff" }}
                     >
-                      ⚙️ Go to Data Settings
+                      Go to Data Settings
                     </button>
                   </div>
                 </div>
@@ -763,7 +745,7 @@ export default function ERPDashboard({ business, onLogout }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(3,1fr)",
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                 gap: 16,
                 marginBottom: 24,
               }}
@@ -775,7 +757,6 @@ export default function ERPDashboard({ business, onLogout }) {
                   sub: overview.hasData
                     ? "Latest sale date from database"
                     : "Waiting for sales import",
-                  icon: "$",
                   accent: true,
                 },
                 {
@@ -784,7 +765,6 @@ export default function ERPDashboard({ business, onLogout }) {
                   sub: overview.hasData
                     ? "Calculated from imported retail sales"
                     : "Waiting for sales import",
-                  icon: "+",
                   accent: false,
                 },
                 {
@@ -793,7 +773,6 @@ export default function ERPDashboard({ business, onLogout }) {
                   sub: overview.hasData
                     ? "All recorded retail sales"
                     : "Waiting for sales import",
-                  icon: "₹",
                   accent: false,
                 },
               ].map((kpi) => (
@@ -826,35 +805,15 @@ export default function ERPDashboard({ business, onLogout }) {
                   )}
                   <div
                     style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
+                      fontSize: 10,
+                      color: kpi.accent ? "rgba(255,255,255,0.7)" : C.textDim,
+                      letterSpacing: "1.5px",
+                      textTransform: "uppercase",
+                      fontWeight: 600,
                       marginBottom: 14,
                     }}
                   >
-                    <span
-                      style={{
-                        fontSize: 10,
-                        color: kpi.accent
-                          ? "rgba(255,255,255,0.7)"
-                          : C.textDim,
-                        letterSpacing: "1.5px",
-                        textTransform: "uppercase",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {kpi.label}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: 18,
-                        color: kpi.accent
-                          ? "rgba(255,255,255,0.8)"
-                          : C.textDim,
-                      }}
-                    >
-                      {kpi.icon}
-                    </span>
+                    {kpi.label}
                   </div>
                   <div
                     style={{
@@ -904,6 +863,7 @@ export default function ERPDashboard({ business, onLogout }) {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "flex-start",
+                    gap: 12,
                     marginBottom: 20,
                   }}
                 >
@@ -930,21 +890,8 @@ export default function ERPDashboard({ business, onLogout }) {
                         : "No monthly sales loaded yet"}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleNavClick("Analytics")}
-                    style={{
-                      padding: "7px 16px",
-                      background: C.greenSubtle,
-                      color: C.green,
-                      border: `1px solid ${C.borderGreen}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      fontFamily: "'IBM Plex Sans', sans-serif",
-                    }}
-                  >
-                    View Details
+                  <button style={linkButtonStyle} onClick={() => handleNavClick("Analytics")}>
+                    View analytics →
                   </button>
                 </div>
                 <ResponsiveContainer width="100%" height={210}>
@@ -1039,6 +986,7 @@ export default function ERPDashboard({ business, onLogout }) {
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "flex-start",
+                    gap: 12,
                     marginBottom: 16,
                   }}
                 >
@@ -1065,43 +1013,19 @@ export default function ERPDashboard({ business, onLogout }) {
                         : "No product sales loaded yet"}
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleNavClick("Sales")}
-                    style={{
-                      padding: "7px 16px",
-                      background: C.greenSubtle,
-                      color: C.green,
-                      border: `1px solid ${C.borderGreen}`,
-                      borderRadius: 6,
-                      fontSize: 12,
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      fontFamily: "'IBM Plex Sans', sans-serif",
-                    }}
-                  >
-                    View Details
+                  <button style={linkButtonStyle} onClick={() => handleNavClick("Sales")}>
+                    View sales →
                   </button>
                 </div>
                 <div
                   style={{
-                    height: 160,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    flexDirection: "column",
-                    gap: 8,
-                    background: C.greenSubtle,
-                    borderRadius: 8,
-                    border: `1px dashed ${C.borderGreen}`,
-                    marginBottom: 16,
+                    padding: "8px 0 20px",
                   }}
                 >
                   <SalesShareDonut products={topProducts} />
-                  <span style={{ fontSize: 12, color: C.textMuted }}>
-                    {overview.hasData
-                      ? `${topProducts.length} products ranked by sales`
-                      : "No product data available"}
-                  </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {topProducts.map((product) => (

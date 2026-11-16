@@ -1,7 +1,7 @@
 // Building blocks shared by the business and supplier Settings pages. Every
 // value shown comes from the server; there are no placeholder fields.
 import { useEffect, useState } from "react";
-import { fetchJson, getAuthToken } from "./api";
+import { fetchJson, readTokenClaims } from "./api";
 
 const C = {
   card: "#ffffff",
@@ -94,17 +94,6 @@ export function Notice({ type = "error", children }) {
       {children}
     </div>
   );
-}
-
-// Claims from the signed-in user's token (display only; the server verifies it).
-function readTokenClaims() {
-  try {
-    const payload = getAuthToken()?.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
 }
 
 export function AccountCard({ extraRows = null, onLogout }) {

@@ -128,7 +128,7 @@ export default function LoginPage({ onLogin }) {
           <div style={{ fontSize: 11, color: "#4a5a4a", marginTop: 4, letterSpacing: "2.5px", textTransform: "uppercase" }}>AI-Driven Business Suite</div>
         </div>
 
-        <div style={{ textAlign: "center" }}>
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", textAlign: "center" }}>
           <div style={{ width: 48, height: 3, background: C.greenLight, borderRadius: 2, marginBottom: 28, margin: "0 auto 28px" }} />
           <h2 style={{ ...syne, fontSize: 36, fontWeight: 800, color: "#ffffff", lineHeight: 1.2, marginBottom: 16 }}>
             Smarter business,<br />powered by AI.
@@ -138,24 +138,6 @@ export default function LoginPage({ onLogin }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: 12 }}>
-          {[
-            { icon: "◉", label: "Business", desc: "Manage operations" },
-            { icon: "◉", label: "Supplier", desc: "Connect with buyers" },
-            { icon: "🛡", label: "Admin",    desc: "Review & approve" },
-          ].map((r) => (
-            <div key={r.label} style={{
-              flex: 1, padding: "12px 14px",
-              background: `${C.greenLight}10`,
-              border: `1px solid ${C.greenLight}25`,
-              borderRadius: 10,
-            }}>
-              <div style={{ fontSize: 16, color: C.greenLight, marginBottom: 4 }}>{r.icon}</div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: C.greenLight }}>{r.label}</div>
-              <div style={{ fontSize: 10, color: "#4a5a4a", marginTop: 2 }}>{r.desc}</div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* ── Right Panel ── */}
@@ -195,20 +177,16 @@ export default function LoginPage({ onLogin }) {
                 {mode === "login" ? "Sign In As" : "Account Type"}
               </label>
               <div style={{ display: "flex", gap: 8 }}>
-                {[
-                  { value: "business", icon: "◉", label: "Business" },
-                  { value: "supplier", icon: "◉", label: "Supplier" },
-                  ...(mode === "login" ? [{ value: "admin", icon: "🛡", label: "Admin" }] : []),
-                ].map((r) => (
-                  <button type="button" key={r.value} onClick={() => setRole(r.value)} style={{
-                    flex: 1, padding: "10px 12px", borderRadius: 10, cursor: "pointer",
-                    border: role === r.value ? `2px solid ${C.green}` : `1px solid ${C.border}`,
-                    background: role === r.value ? C.greenSubtle : C.card,
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                {["business", "supplier", ...(mode === "login" ? ["admin"] : [])].map((value) => (
+                  <button type="button" key={value} onClick={() => setRole(value)} style={{
+                    flex: 1, padding: "11px 12px", borderRadius: 9, cursor: "pointer",
+                    border: `1px solid ${role === value ? C.green : C.border}`,
+                    background: role === value ? C.greenSubtle : C.card,
                     fontFamily: "'IBM Plex Sans', sans-serif", transition: "all .15s",
+                    fontSize: 12, fontWeight: 600, textTransform: "capitalize",
+                    color: role === value ? C.green : C.text,
                   }}>
-                    <span style={{ fontSize: 14, color: role === r.value ? C.green : C.textDim }}>{r.icon}</span>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: role === r.value ? C.green : C.text }}>{r.label}</span>
+                    {value}
                   </button>
                 ))}
               </div>
@@ -275,17 +253,18 @@ export default function LoginPage({ onLogin }) {
                   type={showPass ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="Enter password"
                   style={{
-                    width: "100%", padding: "11px 40px 11px 14px", borderRadius: 9, fontSize: 13,
+                    width: "100%", padding: "11px 56px 11px 14px", borderRadius: 9, fontSize: 13,
                     border: `1px solid ${C.border}`, background: C.bg, color: C.text,
                     fontFamily: "'IBM Plex Sans', sans-serif", outline: "none",
                     boxSizing: "border-box",
                   }}
                 />
                 <button type="button" onClick={() => setShowPass(s => !s)} style={{
-                  position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
-                  background: "none", border: "none", cursor: "pointer", color: C.textDim, fontSize: 14,
+                  position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)",
+                  background: "none", border: "none", cursor: "pointer", color: C.textMuted,
+                  fontSize: 11, fontWeight: 600, fontFamily: "'IBM Plex Sans', sans-serif",
                 }}>
-                  {showPass ? "◎" : "◉"}
+                  {showPass ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
@@ -293,7 +272,7 @@ export default function LoginPage({ onLogin }) {
             {/* Error message */}
             {error && (
               <div style={{ background: C.errorBg, border: "1px solid #f5c0c0", borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.error, marginBottom: 16 }}>
-                ◬ {error}
+                {error}
               </div>
             )}
 
@@ -308,16 +287,6 @@ export default function LoginPage({ onLogin }) {
             </button>
 
           </form>
-
-          <p style={{ textAlign: "center", marginTop: 24, fontSize: 12, color: C.textDim }}>
-            {mode === "login" ? "Need a business account? " : "Already registered? "}
-            <span
-              onClick={() => switchMode(mode === "login" ? "register" : "login")}
-              style={{ color: C.green, fontWeight: 600, cursor: "pointer" }}
-            >
-              {mode === "login" ? "Register Business" : "Sign In"}
-            </span>
-          </p>
 
         </div>
       </div>

@@ -13,6 +13,17 @@ export function setAuthToken(token) {
   else sessionStorage.removeItem(TOKEN_KEY);
 }
 
+// Claims from the signed-in user's token (display only; the server verifies it).
+export function readTokenClaims() {
+  try {
+    const payload = getAuthToken()?.split(".")[1];
+    if (!payload) return null;
+    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch {
+    return null;
+  }
+}
+
 export async function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
   const token = getAuthToken();

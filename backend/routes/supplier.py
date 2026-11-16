@@ -66,6 +66,17 @@ def get_suppliers(db: Session = Depends(get_db)):
     return [supplier_to_dataset_row(supplier) for supplier in suppliers]
 
 
+def _format_indian(value: int) -> str:
+    """Group digits the way the frontend's toLocaleString("en-IN") does:
+    thousands first, then every two digits (1,50,000 / 12,34,567)."""
+    sign, digits = ("-", str(abs(int(value)))) if int(value) < 0 else ("", str(int(value)))
+    if len(digits) <= 3:
+        return sign + digits
+    head, tail = digits[:-3], digits[-3:]
+    groups = [head[max(i - 2, 0):i] for i in range(len(head), 0, -2)][::-1]
+    return sign + ",".join(groups) + "," + tail
+
+
 def _average(values):
     values = [float(v) for v in values if v is not None]
     return sum(values) / len(values) if values else None
@@ -316,7 +327,11 @@ def supplier_marketplace(supplier_code: str, db: Session = Depends(get_db), curr
 
 
 @router.get("/{supplier_code}/insights")
-def supplier_insights(supplier_code: str, db: Session = Depends(get_db)):
+def supplier_insights(
+    supplier_code: str,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
     """Insights for one supplier, built only from that supplier's own records:
     retailer stock of the products it supplies, recent demand for them, its
     delivery/cost metrics compared with other suppliers, and the simulated
@@ -324,9 +339,9 @@ def supplier_insights(supplier_code: str, db: Session = Depends(get_db)):
 
     Same response shape as /business-pages/insights so the pages render alike.
     """
-    supplier = db.query(models.Supplier).filter(models.Supplier.supplier_code == supplier_code).first()
-    if supplier is None:
-        raise HTTPException(status_code=404, detail="No supplier record matches this supplier ID.")
+    # Same ownership rule as every other endpoint in this router: a supplier
+    # account may only read its own supplier record (the admin may read any).
+    supplier = get_own_supplier(db, supplier_code, current_user)
 
     peers = db.query(models.Supplier).filter(models.Supplier.supplier_code.isnot(None)).all()
     peer_on_time = _average(s.on_time_delivery_rate for s in peers)
@@ -417,7 +432,7 @@ def supplier_insights(supplier_code: str, db: Session = Depends(get_db)):
             {**delivery, "subtitle": "Delivery"},
         ],
         "recommendationCards": [
-            {"title": "Demand for your products", "value": f"{units_recent} units", "note": f"Last 30 days · {demand_note}"},
+            {"title": "Demand for your products", "value": f"{_format_indian(units_recent)} units", "note": f"Last 30 days · {demand_note}"},
             {
                 "title": "Lead time",
                 "value": f"{supplier.lead_time} days" if supplier.lead_time is not None else "-",
