@@ -18,6 +18,7 @@ import BAlertsPage from "./BAlertsPage";
 import BSettingsPage from "./BSettingsPage";
 import ProcurementAgentPage from "./BProcurementAgentPage";
 import ChatWidget from "./ChatWidget";
+import NotificationBell from "./NotificationBell";
 import { apiFetch, fetchJson } from "./api";
 
 const fontLink = document.createElement("link");
@@ -168,7 +169,7 @@ const linkButtonStyle = {
 
 function CardHeader({ title, subtitle, action }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, gap: 12 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14, gap: 12 }}>
       <div>
         <div style={{ ...syne, fontWeight: 700, color: C.text, fontSize: 15 }}>{title}</div>
         {subtitle && <div style={{ fontSize: 12, color: C.textDim, marginTop: 4 }}>{subtitle}</div>}
@@ -190,19 +191,20 @@ function StockHealthCard({ health, total, onOpen }) {
         subtitle={`${total} products by stock against reorder level`}
         action={<button style={linkButtonStyle} onClick={onOpen}>View inventory →</button>}
       />
-      <div style={{ display: "flex", height: 14, borderRadius: 99, overflow: "hidden", background: C.border, marginBottom: 16 }}>
+      <div style={{ display: "flex", height: 8, borderRadius: 99, overflow: "hidden", background: C.border, marginBottom: 16 }}>
         {order.map((key) => (health[key] ? (
           <div key={key} title={`${key}: ${health[key]}`} style={{ width: `${(health[key] / Math.max(total, 1)) * 100}%`, background: healthColors[key] }} />
         ) : null))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+      {/* Same dot / label / value legend as the Sales of Products card. */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {order.map((key) => (
-          <div key={key} style={{ background: C[key.toLowerCase() === "good" ? "good" : key.toLowerCase()].bg, borderRadius: 8, padding: "10px 12px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
-              <span style={{ width: 7, height: 7, borderRadius: "50%", background: healthColors[key] }} />
+          <div key={key} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: C.textMuted }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: healthColors[key], display: "inline-block" }} />
               {key}
             </div>
-            <div style={{ ...syne, fontSize: 22, fontWeight: 700, color: C.text, marginTop: 4 }}>{health[key] || 0}</div>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{health[key] || 0}</span>
           </div>
         ))}
       </div>
@@ -212,32 +214,32 @@ function StockHealthCard({ health, total, onOpen }) {
 
 function ReorderCard({ candidates, onReview }) {
   return (
-    <div style={{ ...cardStyle, background: C.cardGreen, border: `1px solid ${C.borderGreen}` }}>
+    <div style={cardStyle}>
       <CardHeader
         title="AI Reorder"
         subtitle="From the Procurement AI's reorder analysis"
         action={(
-          <span style={{ background: "#fff", color: C.green, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 4, border: `1px solid ${C.borderGreen}` }}>
+          <span style={{ background: C.greenSubtle, color: C.green, fontSize: 11, fontWeight: 600, padding: "3px 10px", borderRadius: 4, border: `1px solid ${C.borderGreen}` }}>
             {candidates.length ? `${candidates.length} TO REORDER` : "STABLE"}
           </span>
         )}
       />
       {candidates.length === 0 ? (
-        <div style={{ background: "#fff", borderRadius: 8, padding: "22px 16px", textAlign: "center", fontSize: 13, color: C.textMuted }}>
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: "16px 0 4px", textAlign: "center", fontSize: 13, color: C.textMuted }}>
           Every product is above its reorder level.
         </div>
       ) : (
-        <div style={{ display: "grid", gap: 10 }}>
+        <div>
           {candidates.map((item) => {
             const tone = C[item.status === "Critical" ? "critical" : "low"];
             return (
-              <div key={item.productId} style={{ background: "#fff", borderRadius: 8, padding: "12px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                <div>
+              <div key={item.productId} style={{ borderTop: `1px solid ${C.border}`, padding: "10px 0", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: "8px 12px" }}>
+                <div style={{ flex: "1 1 180px", minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{item.product}</span>
-                    <span style={{ background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4 }}>{item.status}</span>
+                    <span style={{ background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 4 }}>{item.status}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>
+                  <div style={{ fontSize: 12, color: C.textMuted, marginTop: 3 }}>
                     Stock {item.stock} · reorder level {item.reorder} · order <strong style={{ color: C.text }}>{item.recommendedQuantity}</strong> units
                   </div>
                 </div>
@@ -245,78 +247,6 @@ function ReorderCard({ candidates, onReview }) {
               </div>
             );
           })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const FEATURE_LABELS = {
-  quantity_sold: "Units sold", sales_amount: "Sales", total_cost: "Total cost", profit: "Profit",
-  promo: "Promotion", lag_7: "Units 7 days earlier", current_stock: "Stock", price: "Price",
-  cost_price: "Cost price", reorder_level: "Reorder level",
-};
-
-// "Most deviant dimensions: quantity_sold 130.00 vs avg 34.47 (+5.1 sd); ..." -> "Units sold 130 vs avg 34 (+5.1 sd)"
-function topDeviation(explanation) {
-  const first = (explanation || "").replace("Most deviant dimensions: ", "").split(";")[0].trim();
-  const match = first.match(/^(\w+) ([\d,.]+) vs avg ([\d,.]+) \(([^)]+)\)$/);
-  if (!match) return first;
-  const [, feature, value, avg, sd] = match;
-  const round = (n) => Math.round(Number(n.replace(/,/g, ""))).toLocaleString("en-IN");
-  return `${FEATURE_LABELS[feature] || feature} ${round(value)} vs avg ${round(avg)} (${sd})`;
-}
-
-const severityStyle = {
-  high: { bg: C.critical.bg, color: C.critical.color, label: "High" },
-  medium: { bg: C.low.bg, color: C.low.color, label: "Medium" },
-};
-
-function AlertsCard({ alerts, anomalies, onNavigate }) {
-  const total = alerts.length + (anomalies?.total || 0);
-  return (
-    <div style={cardStyle}>
-      <CardHeader
-        title="Anomaly & System Alerts"
-        subtitle="Stock and supplier checks, plus transactions flagged by the Isolation Forest model"
-        action={<button style={linkButtonStyle} onClick={() => onNavigate("Alerts")}>View all alerts →</button>}
-      />
-      {total === 0 && (
-        <div style={{ padding: "20px 0", textAlign: "center", fontSize: 13, color: C.textMuted }}>All clear: no active alerts.</div>
-      )}
-      <div style={{ display: "grid", gap: 8 }}>
-        {alerts.map((alert) => {
-          const tone = severityStyle[alert.severity] || severityStyle.medium;
-          return (
-            <button
-              key={alert.title}
-              onClick={() => onNavigate(alert.target)}
-              style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", width: "100%", background: "#fff", border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", cursor: "pointer", fontFamily: "'IBM Plex Sans', sans-serif" }}
-            >
-              <span style={{ background: tone.bg, color: tone.color, fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, flexShrink: 0 }}>{tone.label}</span>
-              <span style={{ flex: 1 }}>
-                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.text }}>{alert.title}</span>
-                <span style={{ display: "block", fontSize: 11, color: C.textDim, marginTop: 2 }}>{alert.detail}</span>
-              </span>
-            </button>
-          );
-        })}
-      </div>
-      {anomalies && (
-        <div style={{ marginTop: alerts.length ? 18 : 0 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.textMuted, marginBottom: 8 }}>
-            {anomalies.total} of {anomalies.rows.toLocaleString("en-IN")} transactions flagged as unusual · most unusual:
-          </div>
-          <div style={{ display: "grid", gap: 6 }}>
-            {anomalies.top.map((row) => (
-              <div key={row.transaction_id} style={{ display: "grid", gridTemplateColumns: "100px 100px 80px 1fr", gap: 10, alignItems: "baseline", fontSize: 12, padding: "8px 12px", background: C.greenSubtle, borderRadius: 6 }}>
-                <span style={{ fontFamily: "monospace", color: C.textMuted }}>{row.transaction_id}</span>
-                <span style={{ color: C.textMuted }}>{row.sale_date}</span>
-                <span style={{ fontWeight: 600, color: C.text }}>{row.product_id}</span>
-                <span style={{ color: C.textDim }}>{topDeviation(row.explanation)}</span>
-              </div>
-            ))}
-          </div>
         </div>
       )}
     </div>
@@ -365,15 +295,17 @@ export default function ERPDashboard({ business, onLogout }) {
   const [activeNav, setActiveNav] = useState("Dashboard");
   const [overview, setOverview] = useState(createEmptyOverview);
   const [dashboardError, setDashboardError] = useState("");
+  const [overviewLoading, setOverviewLoading] = useState(true);
   const [procurementFocusId, setProcurementFocusId] = useState(null);
   const [anomalies, setAnomalies] = useState(null);
 
   // Isolation Forest results load separately so the dashboard never waits on the model.
+  // Only the count is needed here (it feeds the notification bell); the Alerts page has the rows.
   useEffect(() => {
     if (activeNav !== "Dashboard") return undefined;
     let ignore = false;
-    fetchJson("/anomaly/anomalies?limit=3")
-      .then((res) => { if (!ignore) setAnomalies({ total: res.total_anomalies, rows: res.total_rows, top: res.results }); })
+    fetchJson("/anomaly/anomalies?limit=1")
+      .then((res) => { if (!ignore) setAnomalies({ total: res.total_anomalies, rows: res.total_rows }); })
       .catch(() => { if (!ignore) setAnomalies(null); });
     return () => { ignore = true; };
   }, [activeNav]);
@@ -411,11 +343,13 @@ export default function ERPDashboard({ business, onLogout }) {
                 : emptyProductSalesData,
           });
           setDashboardError("");
+          setOverviewLoading(false);
         }
       } catch {
         if (!ignore) {
           setOverview(createEmptyOverview());
           setDashboardError("Could not load live dashboard data from the backend.");
+          setOverviewLoading(false);
         }
       }
     }
@@ -655,6 +589,14 @@ export default function ERPDashboard({ business, onLogout }) {
                   : "Overview & summary · Live database data"}
               </p>
             </div>
+            <NotificationBell
+              alerts={overview.alerts}
+              anomalies={anomalies}
+              loading={overviewLoading}
+              error={Boolean(dashboardError)}
+              storageId={business?.id ?? business?.email ?? business?.userEmail ?? "business"}
+              onNavigate={handleNavClick}
+            />
           </div>
         )}
 
@@ -783,9 +725,7 @@ export default function ERPDashboard({ business, onLogout }) {
                     borderRadius: 12,
                     padding: "22px 24px",
                     border: kpi.accent ? "none" : `1px solid ${C.border}`,
-                    boxShadow: kpi.accent
-                      ? "0 4px 20px rgba(74,122,73,0.2)"
-                      : "0 1px 4px rgba(0,0,0,0.04)",
+                    boxShadow: "0 1px 4px rgba(0,0,0,0.04)",
                     position: "relative",
                     overflow: "hidden",
                   }}
@@ -844,7 +784,7 @@ export default function ERPDashboard({ business, onLogout }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "1.4fr 1fr",
+                gridTemplateColumns: "minmax(0, 1.4fr) minmax(0, 1fr)",
                 gap: 18,
                 marginBottom: 24,
               }}
@@ -864,7 +804,7 @@ export default function ERPDashboard({ business, onLogout }) {
                     justifyContent: "space-between",
                     alignItems: "flex-start",
                     gap: 12,
-                    marginBottom: 20,
+                    marginBottom: 18,
                   }}
                 >
                   <div>
@@ -984,13 +924,14 @@ export default function ERPDashboard({ business, onLogout }) {
                 <div
                   style={{
                     display: "flex",
+                    flexWrap: "wrap",
                     justifyContent: "space-between",
                     alignItems: "flex-start",
                     gap: 12,
-                    marginBottom: 16,
+                    marginBottom: 18,
                   }}
                 >
-                  <div>
+                  <div style={{ flex: "1 1 0" }}>
                     <div
                       style={{
                         ...syne,
@@ -1066,7 +1007,7 @@ export default function ERPDashboard({ business, onLogout }) {
               </div>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 18, marginBottom: 24 }}>
               <StockHealthCard
                 health={overview.stockHealth}
                 total={overview.productCount}
@@ -1075,7 +1016,6 @@ export default function ERPDashboard({ business, onLogout }) {
               <ReorderCard candidates={overview.reorderCandidates} onReview={openProcurementFor} />
             </div>
 
-            <AlertsCard alerts={overview.alerts || []} anomalies={anomalies} onNavigate={handleNavClick} />
           </>
         )}
 
