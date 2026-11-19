@@ -80,7 +80,7 @@ export default function SupplierInventoryPage({ user }) {
       )}
 
       {/* Summary Strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 24 }}>
         {[
           { label: "Retailer Listings", value: counts.total,    sub: "Your products across retailers", accent: true },
           { label: "In Stock",          value: counts.ok,       sub: "Above reorder threshold" },

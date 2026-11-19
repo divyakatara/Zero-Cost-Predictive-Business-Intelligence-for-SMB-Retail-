@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 from ml.anomaly import AnomalyResult, train_and_score
+from routes.auth import get_current_user
+from routes.supplier import get_own_supplier
 
 router = APIRouter(prefix="/anomaly", tags=["Anomaly Detection"])
 
@@ -92,11 +94,14 @@ def get_supplier_anomalies(
     limit: int = Query(200, ge=1, le=500, description="Max anomalies to return, ordered by worst score first"),
     refresh: bool = Query(False, description="Re-train model and re-score all rows"),
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ) -> dict[str, Any]:
-    """Anomalies for the products this supplier provides (Product.supplier_code)."""
-    supplier = db.query(models.Supplier).filter(models.Supplier.supplier_code == supplier_code).first()
-    if supplier is None:
-        raise HTTPException(status_code=404, detail="No supplier record matches this supplier ID.")
+    """Anomalies for the products this supplier provides (Product.supplier_code).
+
+    Same ownership rule as the supplier portal's other endpoints: a supplier
+    account may only read its own anomalies (the admin may read any).
+    """
+    supplier = get_own_supplier(db, supplier_code, current_user)
 
     product_codes = sorted(
         code for (code,) in db.query(models.Product.product_code)

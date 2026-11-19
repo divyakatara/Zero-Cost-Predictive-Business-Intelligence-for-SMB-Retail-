@@ -1,11 +1,8 @@
 import { useEffect, useState } from "react";
 import {
-  Area,
-  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -134,14 +131,11 @@ export default function BAnalyticsPage() {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 24 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
         {(data.kpis || []).map((kpi, index) => (
           <div key={kpi.label} style={{ background: index === 0 ? C.green : C.card, borderRadius: 12, padding: "22px 24px", border: index === 0 ? "none" : `1px solid ${C.border}`, boxShadow: index === 0 ? "0 4px 16px rgba(74,122,73,0.2)" : "0 1px 4px rgba(0,0,0,0.04)", position: "relative", overflow: "hidden" }}>
             {index === 0 && <div style={{ position: "absolute", top: -24, right: -24, width: 90, height: 90, borderRadius: "50%", background: "rgba(255,255,255,0.08)" }} />}
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
-              <span style={{ fontSize: 10, color: index === 0 ? "rgba(255,255,255,0.7)" : C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>{kpi.label}</span>
-              <span style={{ fontSize: 18, color: index === 0 ? "rgba(255,255,255,0.8)" : C.textDim }}>+</span>
-            </div>
+            <div style={{ fontSize: 10, color: index === 0 ? "rgba(255,255,255,0.7)" : C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 14 }}>{kpi.label}</div>
             <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: index === 0 ? "#fff" : C.text, lineHeight: 1 }}>{kpi.value}</div>
             <div style={{ fontSize: 12, color: index === 0 ? "rgba(255,255,255,0.65)" : C.textDim, marginTop: 8 }}>{kpi.sub}</div>
           </div>

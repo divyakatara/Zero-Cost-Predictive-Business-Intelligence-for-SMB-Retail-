@@ -99,14 +99,11 @@ export default function InventoryPage({ onReorder } = {}) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 28 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
         {(data.stats || []).map((stat) => (
           <div key={stat.label} style={{ background: C.card, borderRadius: 12, padding: "20px 22px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <span style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600 }}>{stat.label}</span>
-              <span style={{ fontSize: 18, color: C.green }}>{stat.icon}</span>
-            </div>
-            <div style={{ ...syne, fontSize: 32, fontWeight: 700, color: C.text, lineHeight: 1 }}>{stat.value}</div>
+            <div style={{ fontSize: 10, color: C.textDim, letterSpacing: "1.5px", textTransform: "uppercase", fontWeight: 600, marginBottom: 12 }}>{stat.label}</div>
+            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: C.text, lineHeight: 1 }}>{stat.value}</div>
             <div style={{ fontSize: 12, marginTop: 8, color: C.textDim, fontWeight: 500 }}>{stat.change}</div>
           </div>
         ))}
@@ -133,10 +130,11 @@ export default function InventoryPage({ onReorder } = {}) {
           />
         </div>
 
+        <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr style={{ background: C.greenSubtle, borderBottom: `1px solid ${C.border}` }}>
-              {["Product", "Category", "Stock Level", "Reorder Level", "Status", "Demand Forecast (AI)", "Supplier", "Action"].map((heading) => (
+              {["Product", "Category", "Stock", "Reorder Level", "Status", "Demand Forecast (AI)", "Supplier", "Action"].map((heading) => (
                 <th key={heading} style={{ textAlign: "left", padding: "12px 20px", fontSize: 10, fontWeight: 600, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px" }}>
                   {heading}
                 </th>
@@ -146,7 +144,6 @@ export default function InventoryPage({ onReorder } = {}) {
           <tbody>
             {filtered.map((item) => {
               const status = statusMap[item.status] || statusMap.ok;
-              const progress = item.reorder > 0 ? Math.min(100, Math.round((item.qty / item.reorder) * 100)) : 100;
               return (
                 <tr key={item.id} style={{ borderBottom: `1px solid ${C.border}` }}>
                   <td style={{ padding: "14px 20px", fontWeight: 600, fontSize: 13, color: C.text }}>{item.name}</td>
@@ -155,13 +152,8 @@ export default function InventoryPage({ onReorder } = {}) {
                       {item.category}
                     </span>
                   </td>
-                  <td style={{ padding: "14px 20px" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 80, height: 6, background: C.border, borderRadius: 99, overflow: "hidden" }}>
-                        <div style={{ width: `${progress}%`, height: "100%", background: C.green, borderRadius: 99 }} />
-                      </div>
-                      <span style={{ fontSize: 12, color: C.textDim }}>{item.qty} {item.unit}</span>
-                    </div>
+                  <td style={{ padding: "14px 20px", fontSize: 13, color: C.text, fontFamily: "monospace" }}>
+                    {item.qty.toLocaleString("en-IN")}
                   </td>
                   <td style={{ padding: "14px 20px", fontSize: 13, color: C.textMuted, fontFamily: "monospace" }}>{item.reorder}</td>
                   <td style={{ padding: "14px 20px" }}>
@@ -213,6 +205,7 @@ export default function InventoryPage({ onReorder } = {}) {
             })}
           </tbody>
         </table>
+        </div>
         <div style={{ padding: "10px 20px", fontSize: 11, color: C.textDim, borderTop: `1px solid ${C.border}` }}>
           Demand forecast: {forecastNote}
         </div>

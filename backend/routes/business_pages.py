@@ -649,7 +649,7 @@ def alerts_overview(db: Session = Depends(get_db)):
                 "subtitle": "Sales",
                 "severity": "Medium",
                 "status": "Open",
-                "note": f"{len(low_products)} products are close to reorder level.",
+                "note": f"{len(low_products)} product{'' if len(low_products) == 1 else 's'} {'is' if len(low_products) == 1 else 'are'} close to reorder level.",
             }
         )
     if not sales_alerts:

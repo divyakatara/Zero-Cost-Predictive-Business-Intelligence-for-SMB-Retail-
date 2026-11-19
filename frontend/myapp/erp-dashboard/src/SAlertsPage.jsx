@@ -326,7 +326,8 @@ export default function SAlertsPage({ user }) {
                 borderRadius: 7,
                 border: "none",
                 background: filter === f ? C.card : "transparent",
-                color: C.text,
+                color: filter === f ? C.text : C.textDim,
+                boxShadow: filter === f ? "0 1px 4px rgba(0,0,0,0.08)" : "none",
                 cursor: "pointer",
                 fontFamily: "'IBM Plex Sans', sans-serif",
                 fontSize: 12,
@@ -359,7 +360,7 @@ export default function SAlertsPage({ user }) {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+          gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
           gap: 16,
           marginBottom: 24,
         }}

@@ -14,6 +14,12 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 from routes.auth import get_current_user
+# The one stock classifier the dashboard, Inventory page and procurement agent
+# all use, so the chatbot can never quote a different count than the screens.
+from routes.business_pages import classify_stock
+# Only the request bound and the "don't retry other models" rule are shared with
+# the agent helper; the prompts and fallbacks below stay owned by this module.
+from services.gemini_helper import ACCOUNT_LEVEL_ERRORS, REQUEST_OPTIONS
 
 load_dotenv()
 
@@ -100,12 +106,19 @@ def _get_erp_context(db: Session) -> tuple[str, bool]:
             )
 
     products = db.query(models.Product).all()
-    critical = [p.product_code for p in products if (p.supplier_stock or 0) <= (p.reorder_level or 0)]
+    # Critical + low, the same classify_stock rule the dashboard, the Inventory
+    # page, the procurement agent and _live_stats below all use, so Gemini is
+    # given the same figure the screens show.
+    needs_restock = [
+        p.product_code or p.name
+        for p in products
+        if classify_stock(p.supplier_stock, p.reorder_level, p.stock_status) in ("critical", "low")
+    ]
     lines.append(f"Total Products: {len(products)}")
-    if critical:
-        lines.append(f"Low/Critical Stock: {', '.join(critical)}")
+    if needs_restock:
+        lines.append(f"Low/Critical Stock: {', '.join(needs_restock)}")
     else:
-        lines.append("All products are above reorder levels (no critical stock).")
+        lines.append("All products are above their reorder thresholds.")
 
     suppliers = db.query(models.Supplier).all()
     lines.append(f"Total Suppliers: {len(suppliers)}")
@@ -135,7 +148,14 @@ def _live_stats(db: Session) -> dict:
         "profit": float(db.query(func.coalesce(func.sum(models.Sale.profit), 0.0)).scalar() or 0.0),
         "top_products": top_codes,
         "products": len(products),
-        "low_stock": [p.product_code or p.name for p in products if (p.supplier_stock or 0) <= (p.reorder_level or 0)],
+        # Critical + low, matching the dashboard's "to reorder" count. Counting
+        # only stock <= reorder_level made the fallback quote a smaller number
+        # than the dashboard and Inventory page showed for the same data.
+        "low_stock": [
+            p.product_code or p.name
+            for p in products
+            if classify_stock(p.supplier_stock, p.reorder_level, p.stock_status) in ("critical", "low")
+        ],
         "suppliers": db.query(models.Supplier).count(),
     }
 
@@ -296,7 +316,7 @@ def _fallback_reply(message: str, is_admin: bool, is_connected: bool, stats: Opt
     if "stock" in msg or "inventory" in msg or "restock" in msg:
         low = stats.get("low_stock") or []
         status = (
-            f"{len(low)} product(s) are at or below their reorder level: {', '.join(low)}."
+            f"{len(low)} product(s) are at or near their reorder level: {', '.join(low)}."
             if low
             else "All current stock levels are above their reorder thresholds."
         )
@@ -355,9 +375,11 @@ def chat(
             for model_name in model_candidates:
                 try:
                     gemini_model = genai.GenerativeModel(model_name=model_name)
-                    response = gemini_model.generate_content(full_prompt)
+                    response = gemini_model.generate_content(full_prompt, request_options=REQUEST_OPTIONS)
                     if response and hasattr(response, "text") and response.text:
                         return ChatResponse(reply=_clean_reply(response.text))
+                except ACCOUNT_LEVEL_ERRORS:
+                    break  # the key is out of quota or not permitted: no model will work
                 except Exception:
                     continue
         except Exception:

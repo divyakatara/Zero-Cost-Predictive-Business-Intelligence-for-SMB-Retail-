@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 import models
-from routes.supplier import get_own_supplier, supplier_analytics, supplier_inventory
+from routes.supplier import get_own_supplier, supplier_analytics, supplier_insights, supplier_inventory
 
 SUPPLIER_1 = {"role": "supplier", "sub": "s1@test.local"}
 
@@ -41,6 +41,16 @@ def test_supplier_can_only_read_own_code(db, catalog):
         get_own_supplier(db, "supplier_1", {"role": "business", "sub": "b@test.local"})
     assert business.value.status_code == 403
     assert get_own_supplier(db, "supplier_2", {"role": "admin", "sub": "admin"}).supplier_code == "supplier_2"
+
+
+def test_insights_enforce_the_same_ownership_rule(db, catalog):
+    """/insights used to be the one endpoint here without an ownership check."""
+    own = supplier_insights("supplier_1", db=db, current_user=SUPPLIER_1)
+    assert "supplier_1" in own["headerNote"]
+
+    with pytest.raises(HTTPException) as other:
+        supplier_insights("supplier_2", db=db, current_user=SUPPLIER_1)
+    assert other.value.status_code == 403
 
 
 def test_inventory_lists_only_own_products(db, catalog):

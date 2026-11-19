@@ -126,7 +126,7 @@ function DataTab() {
       const res = await apiFetch(`/api/data/load-demo`, { method: "POST" });
       const body = await res.json();
       if (res.ok) {
-        setDataMsg({ text: `✓ Demo dataset loaded: ${body.sales_count} sales, ${body.products_count} products, ${body.suppliers_count} suppliers.`, type: "success" });
+        setDataMsg({ text: `Demo dataset loaded: ${body.sales_count} sales, ${body.products_count} products, ${body.suppliers_count} suppliers.`, type: "success" });
         await fetchDataStatus();
       } else {
         setDataMsg({ text: `Error: ${body.detail || "Could not load demo dataset."}`, type: "error" });
@@ -146,7 +146,7 @@ function DataTab() {
       const res = await apiFetch(`/api/data/clear`, { method: "POST" });
       const body = await res.json();
       if (res.ok) {
-        setDataMsg({ text: "✓ All business data cleared. Dashboard will show empty state.", type: "warn" });
+        setDataMsg({ text: "All business data cleared. Your dashboard now shows its empty state.", type: "warn" });
         await fetchDataStatus();
       } else {
         setDataMsg({ text: `Error: ${body.detail || "Could not clear data."}`, type: "error" });
@@ -169,7 +169,7 @@ function DataTab() {
       const res = await apiFetch(`/api/data/import`, { method: "POST", body: formData });
       const body = await res.json();
       if (res.ok) {
-        setDataMsg({ text: `✓ ${body.message}`, type: "success" });
+        setDataMsg({ text: body.message, type: "success" });
         await fetchDataStatus();
       } else {
         setDataMsg({ text: `Validation failed: ${body.detail}`, type: "error" });
@@ -214,7 +214,7 @@ function DataTab() {
               </div>
             </div>
             <button onClick={fetchDataStatus} style={{ ...secondaryButtonStyle(), padding: "6px 12px", fontSize: 11 }}>
-              ↻ Refresh
+              Refresh
             </button>
           </div>
 
@@ -233,7 +233,7 @@ function DataTab() {
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 18, alignItems: "start" }}>
 
             {/* Import / Upload */}
             <div style={{ background: C.card, borderRadius: 12, padding: "24px", border: `1px solid ${C.border}`, boxShadow: "0 1px 4px rgba(0,0,0,0.04)" }}>
@@ -243,23 +243,29 @@ function DataTab() {
               </div>
 
               {/* Drop zone */}
-              <div
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
+                disabled={dataLoading === "import"}
                 style={{
-                  border: `2px dashed ${C.greenBorder}`,
+                  display: "block",
+                  width: "100%",
+                  border: `1px dashed ${C.greenBorder}`,
                   borderRadius: 10,
-                  padding: "28px 20px",
+                  padding: "26px 20px",
                   textAlign: "center",
-                  cursor: "pointer",
+                  cursor: dataLoading === "import" ? "default" : "pointer",
                   background: C.greenSubtle,
-                  marginBottom: 16,
-                  transition: "background .15s",
+                  fontFamily: "'IBM Plex Sans', sans-serif",
                 }}
               >
-                <div style={{ fontSize: 26, marginBottom: 8 }}>📁</div>
-                <div style={{ fontSize: 13, fontWeight: 600, color: C.green }}>Click to upload file</div>
-                <div style={{ fontSize: 11, color: C.textDim, marginTop: 4 }}>Supports .xlsx · .xls · .csv</div>
-              </div>
+                <span style={{ display: "block", fontSize: 13, fontWeight: 600, color: C.green }}>
+                  {dataLoading === "import" ? "Uploading & validating…" : "Click to upload and import a dataset"}
+                </span>
+                <span style={{ display: "block", fontSize: 11, color: C.textDim, marginTop: 4 }}>
+                  Supports .xlsx · .xls · .csv
+                </span>
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -267,14 +273,6 @@ function DataTab() {
                 onChange={handleFileImport}
                 style={{ display: "none" }}
               />
-
-              <button
-                style={{ ...primaryButtonStyle(), width: "100%", opacity: dataLoading === "import" ? 0.7 : 1 }}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={dataLoading === "import"}
-              >
-                {dataLoading === "import" ? "Uploading & Validating..." : "📤 Upload & Import Dataset"}
-              </button>
             </div>
 
             {/* Demo Dataset + Clear */}
@@ -285,21 +283,12 @@ function DataTab() {
                   Load the built-in <strong>Capstone ERP Workbook</strong> — 3,650 transactions, 10 products, 5 suppliers across 2 branches.
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
-                  {[["3,650", "Sales"], ["10", "Products"], ["5", "Suppliers"]].map(([v, l]) => (
-                    <div key={l} style={{ background: "#fff", borderRadius: 8, padding: "10px", textAlign: "center", border: `1px solid ${C.greenBorder}` }}>
-                      <div style={{ ...syne, fontSize: 18, fontWeight: 800, color: C.green }}>{v}</div>
-                      <div style={{ fontSize: 10, color: C.textDim, marginTop: 2 }}>{l}</div>
-                    </div>
-                  ))}
-                </div>
-
                 <button
                   style={{ ...primaryButtonStyle(), width: "100%", opacity: dataLoading === "demo" ? 0.7 : 1 }}
                   onClick={handleLoadDemo}
                   disabled={dataLoading === "demo"}
                 >
-                  {dataLoading === "demo" ? "Loading Demo..." : "🗄️ Load Demo Dataset"}
+                  {dataLoading === "demo" ? "Loading demo…" : "Load Demo Dataset"}
                 </button>
               </div>
 
@@ -313,7 +302,7 @@ function DataTab() {
                   onClick={handleClear}
                   disabled={dataLoading === "clear"}
                 >
-                  {dataLoading === "clear" ? "Clearing..." : "🗑️ Clear Data (Test Empty State)"}
+                  {dataLoading === "clear" ? "Clearing…" : "Clear Business Data"}
                 </button>
               </div>
             </div>
@@ -351,7 +340,7 @@ function DataTab() {
           {/* Column reference */}
           <div style={{ background: C.card, borderRadius: 12, padding: "20px 24px", border: `1px solid ${C.border}` }}>
             <div style={{ ...syne, fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 10 }}>Required Column Reference</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}>
               {["sale_date", "product_id", "quantity_sold", "sales_amount", "cost_price", "profit", "branch_id", "promo"].map(col => (
                 <code key={col} style={{ background: C.greenSubtle, color: C.green, padding: "4px 8px", borderRadius: 6, fontSize: 11, fontWeight: 600 }}>{col}</code>
               ))}

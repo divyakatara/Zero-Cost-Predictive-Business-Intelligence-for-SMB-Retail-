@@ -447,9 +447,11 @@ export default function ProcurementAgentPage({ business, focusProductId, onFocus
                       marginBottom: 12,
                       fontFamily: "'IBM Plex Sans', sans-serif",
                       boxSizing: "border-box",
+                      background: "#fff",
+                      color: C.text,
                     }}
                   />
-                  <div style={{ display: "flex", gap: 10 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button style={btnPrimary} disabled={busy || isLocked} onClick={handleApprove}>
                       {isLocked ? "Approval locked" : busy ? "Working…" : "Approve & Create Simulated Order"}
                     </button>

@@ -36,6 +36,14 @@ const businessTypes = [
 
 const steps = ["Business Info", "Location & Contact", "Legal & Tax"];
 
+// The business API returns null for optional fields that were left blank. A null
+// `value` turns a controlled input into an uncontrolled one (and logs a React
+// warning), so blank them out before they pre-fill the resubmission form.
+function withoutNulls(record) {
+  if (!record) return {};
+  return Object.fromEntries(Object.entries(record).map(([key, value]) => [key, value ?? ""]));
+}
+
 function Field({ label, required, hint, error, children }) {
   return (
     <div style={{ marginBottom: 18 }}>
@@ -97,7 +105,7 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
     registrationNumber: "",
     gstCertificateName: "",
     // Pre-fill when a rejected business is updating and resubmitting its details
-    ...initialData,
+    ...withoutNulls(initialData),
   });
   const [gstCertificateFile, setGstCertificateFile] = useState(null);
   const [fileError, setFileError] = useState("");
@@ -241,7 +249,6 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
               padding: "12px 16px", marginBottom: 20, fontSize: 12,
               color: C.danger, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
             }}>
-              <span style={{ fontSize: 16 }}>⚠</span>
               Please fill in all required fields highlighted below ({Object.keys(visibleErrors).length} missing).
             </div>
           )}
@@ -253,7 +260,6 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
               padding: "12px 16px", marginBottom: 20, fontSize: 12,
               color: C.danger, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
             }}>
-              <span style={{ fontSize: 16 }}>⚠</span>
               {submitError}
             </div>
           )}
@@ -362,7 +368,7 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
                     padding: "18px 14px", cursor: "pointer", background: C.cardGreen,
                     fontSize: 13, color: C.green, fontWeight: 600,
                   }}>
-                    <span style={{ fontSize: 16 }}>⇪</span> Choose File to Upload
+                    Choose File to Upload
                     <input
                       type="file"
                       accept=".pdf,.jpg,.jpeg,.png"
@@ -377,7 +383,6 @@ export default function BRegisterBusinessPage({ user, initialData, onSubmit, onB
                     background: C.cardGreen,
                   }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                      <span style={{ fontSize: 16, color: C.green }}>📄</span>
                       <div style={{ minWidth: 0 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260 }}>
                           {gstCertificateFile.name}

@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { listBusinessesForAdmin, approveBusiness, rejectBusiness, revokeBusiness } from "./businessStore";
 import ChatWidget from "./ChatWidget";
-import { apiFetch, getAuthToken, openGstCertificateApi } from "./api";
+import { apiFetch, openGstCertificateApi, readTokenClaims } from "./api";
+import { SettingsCard, SettingsRow } from "./SettingsParts";
 
 const fontLink = document.createElement("link");
 fontLink.href = "https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap";
@@ -126,6 +127,8 @@ export default function AdminApprovalPage({ onLogout }) {
   const rejectedCount = businesses.filter((b) => b.status === "rejected").length;
 
   const filtered = tab === "all" ? businesses : businesses.filter((b) => b.status === tab);
+  // The signed-in admin's own address (ADMIN_EMAIL is configured per server).
+  const adminEmail = readTokenClaims()?.sub || "Administrator";
 
   return (
     <div style={{ ...ibm, background: C.bg, minHeight: "100vh", display: "flex", color: C.text }}>
@@ -151,8 +154,8 @@ export default function AdminApprovalPage({ onLogout }) {
           </div>
 
           {[
-            { label: "Approvals", icon: "📋", badge: pendingCount ? `${pendingCount}` : null },
-            { label: "Settings", icon: "⚙️" },
+            { label: "Approvals", badge: pendingCount ? `${pendingCount}` : null },
+            { label: "Settings" },
           ].map((item) => {
             const active = activeNav === item.label;
             return (
@@ -168,10 +171,7 @@ export default function AdminApprovalPage({ onLogout }) {
                   fontWeight: active ? 600 : 400, fontFamily: "'IBM Plex Sans', sans-serif",
                 }}
               >
-                <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span>{item.icon}</span>
-                  {item.label}
-                </span>
+                <span>{item.label}</span>
                 {item.badge && (
                   <span style={{ background: C.amber, color: "#fff", padding: "2px 8px", borderRadius: 10, fontSize: 10, fontWeight: 700 }}>
                     {item.badge}
@@ -184,7 +184,9 @@ export default function AdminApprovalPage({ onLogout }) {
 
         <div style={{ marginTop: "auto", padding: 24, borderTop: `1px solid ${C.sideBorder}` }}>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.greenLight }}>Administrator</div>
-          <div style={{ fontSize: 11, color: C.sideMuted, marginTop: 2, marginBottom: 14 }}>admin@smarterp.com</div>
+          <div style={{ fontSize: 11, color: C.sideMuted, marginTop: 2, marginBottom: 14, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {adminEmail}
+          </div>
           <button
             onClick={onLogout || (() => window.location.reload())}
             style={{
@@ -221,25 +223,25 @@ export default function AdminApprovalPage({ onLogout }) {
         </div>
 
         {/* Overview KPIs */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16, marginBottom: 28 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 28 }}>
           <div style={{ background: C.card, borderRadius: 12, padding: "20px 22px", border: `1px solid ${C.border}` }}>
             <div style={{ fontSize: 11, color: C.textDim, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600, marginBottom: 8 }}>Total Registered</div>
-            <div style={{ ...syne, fontSize: 28, fontWeight: 800, color: C.text }}>{totalCount}</div>
+            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: C.text }}>{totalCount}</div>
             <div style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>Registered businesses</div>
           </div>
           <div style={{ background: C.amberBg, borderRadius: 12, padding: "20px 22px", border: `1px solid #ecdca2` }}>
             <div style={{ fontSize: 11, color: C.amber, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600, marginBottom: 8 }}>Pending Review</div>
-            <div style={{ ...syne, fontSize: 28, fontWeight: 800, color: C.amber }}>{pendingCount}</div>
+            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: C.amber }}>{pendingCount}</div>
             <div style={{ fontSize: 11, color: C.amber, marginTop: 4 }}>Awaiting admin action</div>
           </div>
           <div style={{ background: C.greenSubtle, borderRadius: 12, padding: "20px 22px", border: `1px solid ${C.greenBorder}` }}>
             <div style={{ fontSize: 11, color: C.green, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600, marginBottom: 8 }}>Approved</div>
-            <div style={{ ...syne, fontSize: 28, fontWeight: 800, color: C.green }}>{approvedCount}</div>
+            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: C.green }}>{approvedCount}</div>
             <div style={{ fontSize: 11, color: C.green, marginTop: 4 }}>Full ERP access unlocked</div>
           </div>
           <div style={{ background: C.dangerBg, borderRadius: 12, padding: "20px 22px", border: `1px solid #f0c8c0` }}>
             <div style={{ fontSize: 11, color: C.danger, textTransform: "uppercase", letterSpacing: "1px", fontWeight: 600, marginBottom: 8 }}>Rejected</div>
-            <div style={{ ...syne, fontSize: 28, fontWeight: 800, color: C.danger }}>{rejectedCount}</div>
+            <div style={{ ...syne, fontSize: 28, fontWeight: 700, color: C.danger }}>{rejectedCount}</div>
             <div style={{ fontSize: 11, color: C.danger, marginTop: 4 }}>Registration declined</div>
           </div>
         </div>
@@ -309,7 +311,7 @@ export default function AdminApprovalPage({ onLogout }) {
                   </div>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, padding: "14px 16px", background: C.bg, borderRadius: 10, marginBottom: 16, fontSize: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 14, padding: "14px 16px", background: C.bg, borderRadius: 10, marginBottom: 16, fontSize: 12 }}>
                   <div><span style={{ color: C.textDim, display: "block", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>Business Type</span> <span style={{ color: C.text, fontWeight: 600 }}>{b.businessType || "—"}</span></div>
                   <div><span style={{ color: C.textDim, display: "block", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>Category</span> <span style={{ color: C.text, fontWeight: 600 }}>{b.category || "—"}</span></div>
                   <div><span style={{ color: C.textDim, display: "block", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>Reg Number</span> <span style={{ color: C.text, fontWeight: 600 }}>{b.registrationNumber || "—"}</span></div>
@@ -329,7 +331,7 @@ export default function AdminApprovalPage({ onLogout }) {
                           cursor: "pointer", marginTop: 2, display: "inline-flex", alignItems: "center", gap: 4,
                         }}
                       >
-                        📄 View Certificate
+                        View Certificate
                       </button>
                     ) : (
                       <span style={{ color: C.textDim, fontSize: 11 }}>Not uploaded</span>
@@ -411,36 +413,6 @@ export default function AdminApprovalPage({ onLogout }) {
     </div>
   );
 }
-// Claims from the signed-in admin's token (display only; the server verifies it).
-function readTokenClaims() {
-  try {
-    const payload = getAuthToken()?.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-  } catch {
-    return null;
-  }
-}
-
-function SettingsCard({ title, subtitle, children }) {
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24, marginBottom: 18 }}>
-      <div style={{ ...syne, fontSize: 16, fontWeight: 700, color: C.text }}>{title}</div>
-      {subtitle && <div style={{ fontSize: 12, color: C.textDim, margin: "4px 0 0" }}>{subtitle}</div>}
-      <div style={{ marginTop: 18 }}>{children}</div>
-    </div>
-  );
-}
-
-function SettingsRow({ label, value }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", gap: 16, padding: "11px 0", borderBottom: `1px solid ${C.border}`, fontSize: 13 }}>
-      <span style={{ color: C.textMuted }}>{label}</span>
-      <span style={{ color: C.text, fontWeight: 600, textAlign: "right" }}>{value}</span>
-    </div>
-  );
-}
-
 function AdminSettingsPanel({ onLogout }) {
   const claims = readTokenClaims();
   const [dataStatus, setDataStatus] = useState(null);

@@ -24,18 +24,36 @@ load_dotenv()
 
 _MODEL_CANDIDATES = [
     # "-latest" aliases first so this keeps working as the provider retires
-    # dated model names (verified live against this API key: gemini-2.0-flash,
-    # the model routes/chat.py's cascade also starts with, is already 404
-    # Not Found as of this build — chat.py has the same latent issue).
+    # dated model names. The list is checked against the account's own
+    # list_models(): gemini-2.0-flash, gemini-1.5-flash-latest,
+    # gemini-1.5-flash, gemini-1.5-pro and gemini-pro no longer exist and were
+    # removed, because a retired name only adds a failed round trip before the
+    # fallback is reached.
     "gemini-flash-latest",
     "gemini-2.5-flash",
     "gemini-pro-latest",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-1.5-flash",
-    "gemini-1.5-pro",
-    "gemini-pro",
 ]
+
+# Bound every Gemini call. Without this the SDK retries a failing request with
+# its own backoff (measured: ~31s for one 429), and the cascade above multiplies
+# that, so a key that is out of quota used to stall the caller for minutes
+# before the deterministic fallback was reached. Keep this comfortably above a
+# normal flash response (1-5s) so a working key is unaffected.
+GEMINI_TIMEOUT_SECONDS = 20
+REQUEST_OPTIONS = {"timeout": GEMINI_TIMEOUT_SECONDS}
+
+# Quota/credential failures are about the API key, not the model, so trying the
+# next candidate cannot help: stop the cascade and fall back immediately.
+try:
+    from google.api_core import exceptions as _google_exceptions
+
+    ACCOUNT_LEVEL_ERRORS = (
+        _google_exceptions.ResourceExhausted,
+        _google_exceptions.PermissionDenied,
+        _google_exceptions.Unauthenticated,
+    )
+except ImportError:  # pragma: no cover - google-api-core ships with the SDK
+    ACCOUNT_LEVEL_ERRORS = ()
 
 # Same label-stripping safety net as chat.py — never let a bracketed internal
 # label or raw model artifact reach the end user.
@@ -67,11 +85,13 @@ def generate_text(prompt: str, fallback: str) -> tuple[str, bool]:
         for model_name in _MODEL_CANDIDATES:
             try:
                 model = genai.GenerativeModel(model_name=model_name)
-                response = model.generate_content(prompt)
+                response = model.generate_content(prompt, request_options=REQUEST_OPTIONS)
                 if response and getattr(response, "text", None):
                     cleaned = _clean(response.text)
                     if cleaned:
                         return cleaned, True
+            except ACCOUNT_LEVEL_ERRORS:
+                break  # the key is out of quota or not permitted: no model will work
             except Exception:
                 continue
     except Exception:
